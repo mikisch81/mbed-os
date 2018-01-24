@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016 ARM Limited. All rights reserved.
+ * Copyright (c) 2018 ARM Limited. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  * Licensed under the Apache License, Version 2.0 (the License); you may
  * not use this file except in compliance with the License.
@@ -18,42 +18,25 @@
 
 // ----------------------------------------------------------- Includes -----------------------------------------------------------
 
-#include "mbed.h"
-#include "FlashIAP.h"
-
 #include "nvstore_int_flash_wrapper.h"
-
-#include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
 #include "nvstore_shared_lock.h"
+#include "FlashIAP.h"
+#include <stdlib.h>
 
 // --------------------------------------------------------- Definitions ----------------------------------------------------------
-
-#define TRACE_GROUP                     "nvstore"
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 #define MIN(a,b)            ((a) < (b) ? (a) : (b))
 #define MAX(a,b)            ((a) > (b) ? (a) : (b))
 
 #define MAX_PAGE_SIZE   16
 
-static FlashIAP flash;
+static mbed::FlashIAP flash;
 
 static size_t get_page_size(void)
 {
     return MIN(flash.get_page_size(), MAX_PAGE_SIZE);
 }
 
-// Program to Flash with alignments to page size
-// Parameters :
-// @param[in]   buffer - pointer to the buffer to be written
-// @param[in]   size - the size of the buffer in bytes.
-// @param[in]   address - the address of the internal flash, must be aligned to minimum writing unit (page size).
-// Return     : None.
 static int program_flash(size_t size, uint32_t address, const uint8_t *buffer)
 {
     int ret;
@@ -169,8 +152,7 @@ int nvstore_int_flash_write(size_t size, uint32_t address, const uint32_t *buffe
         return -1;
     }
 
-    while (size)
-    {
+    while (size) {
         chunk = MIN(sector_size - (address % sector_size), size);
         ret = program_flash(chunk, address, buf);
         if (ret) {
@@ -185,8 +167,4 @@ int nvstore_int_flash_write(size_t size, uint32_t address, const uint32_t *buffe
     return 0;
 }
 
-
-#ifdef __cplusplus
-}
-#endif
 

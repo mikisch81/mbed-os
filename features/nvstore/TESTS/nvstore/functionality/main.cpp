@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2016 ARM Limited. All rights reserved.
+* Copyright (c) 2018 ARM Limited. All rights reserved.
 * SPDX-License-Identifier: Apache-2.0
 * Licensed under the Apache License, Version 2.0 (the License); you may
 * not use this file except in compliance with the License.
@@ -16,24 +16,20 @@
 
 #include "nvstore.h"
 #include "nvstore_int_flash_wrapper.h"
+#include "nvstore_shared_lock.h"
+#include "thread.h"
+#include "greentea-client/test_env.h"
+#include "unity/unity.h"
+#include "utest/utest.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 
-#include "../../../source/nvstore_shared_lock.h"
-#include "cmsis_os2.h"
-#include "rtos/thread.h"
-
-#include "mbed.h"
-#include "greentea-client/test_env.h"
-#include "unity/unity.h"
-#include "utest/utest.h"
+#ifndef NVSTORE_ENABLED
+#error [NOT_SUPPORTED] NVSTORE needs to be enabled for this test
+#endif
 
 using namespace utest::v1;
-
-#ifndef NVSTORE_THREAD_SAFE
-#define NVSTORE_THREAD_SAFE 1
-#endif
 
 #undef MIN
 #define MIN(a,b)            ((a) < (b) ? (a) : (b))
@@ -157,10 +153,9 @@ void nvstore_basic_functionality_test()
 
     gen_random((uint8_t *) nvstore_testing_buf_set, NVSTORE_MAX_NAME_LENGTH);
 
-    result = nvstore.probe(MAX_KEYS, 0, NULL, &actual_len_bytes);
+    result = nvstore.probe(MAX_KEYS, 0, NULL, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_NOT_FOUND, result);
 
-#if !SOTP_PROBE_ONLY
     nvstore.set_max_keys(MAX_KEYS);
     TEST_ASSERT_EQUAL(MAX_KEYS, nvstore.get_max_keys());
 
@@ -170,13 +165,13 @@ void nvstore_basic_functionality_test()
     result = nvstore.set(5, 18, nvstore_testing_buf_set);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
 
-    result = nvstore.get(5, 22, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(5, 22, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(18, actual_len_bytes);
     TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)nvstore_testing_buf_set, (uint8_t*)nvstore_testing_buf_get, 15);
     result = nvstore.remove(5);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
-    result = nvstore.get(5, 20, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(5, 20, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_NOT_FOUND, result);
 
     result = nvstore.set(11, 0, NULL);
@@ -206,108 +201,108 @@ void nvstore_basic_functionality_test()
     result = nvstore.init();
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
 
-    result = nvstore.get(14, 20, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(14, 20, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_NOT_FOUND, result);
-    result = nvstore.get(7, 0, NULL, &actual_len_bytes);
+    result = nvstore.get(7, 0, NULL, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(0, actual_len_bytes);
-    result = nvstore.get(7, 15, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(7, 15, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(0, actual_len_bytes);
-    result = nvstore.get(7, 0, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(7, 0, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(0, actual_len_bytes);
-    result = nvstore.get(9, 0, NULL, &actual_len_bytes);
+    result = nvstore.get(9, 0, NULL, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_BUFF_TOO_SMALL, result);
-    result = nvstore.get(9, 150, NULL, &actual_len_bytes);
+    result = nvstore.get(9, 150, NULL, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_BUFF_TOO_SMALL, result);
-    result = nvstore.get(9, 0, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(9, 0, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_BUFF_TOO_SMALL, result);
-    result = nvstore.get(10, 2048, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(10, 2048, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(2048, actual_len_bytes);
     TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)nvstore_testing_buf_set, (uint8_t*)nvstore_testing_buf_get, 2048);
     zero_get_array(2048);
-    result = nvstore.get(10, 2049, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(10, 2049, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(2048, actual_len_bytes);
     TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)nvstore_testing_buf_set, (uint8_t*)nvstore_testing_buf_get, 2048);
     zero_get_array(2048);
-    result = nvstore.get(10, 2047, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(10, 2047, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_BUFF_TOO_SMALL, result);
     actual_len_bytes = 0;
-    result = nvstore.get(64, 20, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(64, 20, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_BAD_VALUE, result);
-    result = nvstore.get(9, 20, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(9, 20, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(20, actual_len_bytes);
     TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)&(nvstore_testing_buf_set[3]), (uint8_t*)nvstore_testing_buf_get, 20);
     zero_get_array(20);
-    result = nvstore.get(9, 21, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(9, 21, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(20, actual_len_bytes);
     TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)&(nvstore_testing_buf_set[3]), (uint8_t*)nvstore_testing_buf_get, 20);
     zero_get_array(20);
-    result = nvstore.get(9, 19, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(9, 19, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_BUFF_TOO_SMALL, result);
-    result = nvstore.get(13, 3, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(13, 3, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(3, actual_len_bytes);
     TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)&(nvstore_testing_buf_set[1]), (uint8_t*)nvstore_testing_buf_get, 3);
-    result = nvstore.get_item_size(13, &actual_len_bytes);
+    result = nvstore.get_item_size(13, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(3, actual_len_bytes);
     zero_get_array(3);
-    result = nvstore.get(13, 4, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(13, 4, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(3, actual_len_bytes);
     TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)&(nvstore_testing_buf_set[1]), (uint8_t*)nvstore_testing_buf_get, 3);
     zero_get_array(3);
-    result = nvstore.get(13, 2, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(13, 2, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_BUFF_TOO_SMALL, result);
     result = nvstore.init();
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     // check all the expected keys
     actual_len_bytes = 0;
-    result = nvstore.get(10, 2048, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(10, 2048, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(2048, actual_len_bytes);
     TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)nvstore_testing_buf_set, (uint8_t*)nvstore_testing_buf_get, 2048);
     zero_get_array(2048);
 
     actual_len_bytes = 0;
-    result = nvstore.get(11, 2048, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(11, 2048, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(0, actual_len_bytes);
 
     actual_len_bytes = 0;
-    result = nvstore.get(13, 3, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(13, 3, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(3, actual_len_bytes);
     TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)&(nvstore_testing_buf_set[1]), (uint8_t*)nvstore_testing_buf_get, 3);
     zero_get_array(3);
 
     actual_len_bytes = 0;
-    result = nvstore.get(9, 20, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(9, 20, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(20, actual_len_bytes);
     TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)&(nvstore_testing_buf_set[3]), (uint8_t*)nvstore_testing_buf_get, 20);
     zero_get_array(20);
 
     actual_len_bytes = 0;
-    result = nvstore.get(7, 0, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(7, 0, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(0, actual_len_bytes);
 
     actual_len_bytes = 0;
-    result = nvstore.get(15, 15, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(15, 15, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(15, actual_len_bytes);
     TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)&(nvstore_testing_buf_set[2]), (uint8_t*)nvstore_testing_buf_get, 15);
     zero_get_array(15);
 
     actual_len_bytes = 0;
-    result = nvstore.get(19, 12, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(19, 12, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(12, actual_len_bytes);
     TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)&(nvstore_testing_buf_set[2]), (uint8_t*)nvstore_testing_buf_get, 12);
@@ -335,47 +330,47 @@ void nvstore_basic_functionality_test()
 #endif
 
     actual_len_bytes = 0;
-    result = nvstore.get(10, 15, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(10, 15, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(15, actual_len_bytes);
     TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)&(nvstore_testing_buf_set[4]), (uint8_t*)nvstore_testing_buf_get, 15);
     zero_get_array(15);
 
     actual_len_bytes = 0;
-    result = nvstore.get(11, 27, nvstore_testing_buf_get, &actual_len_bytes); // no care about the buf and len values
+    result = nvstore.get(11, 27, nvstore_testing_buf_get, actual_len_bytes); // no care about the buf and len values
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(27, actual_len_bytes);
     TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)&(nvstore_testing_buf_set[5]), (uint8_t*)nvstore_testing_buf_get, 27);
     zero_get_array(27);
 
     actual_len_bytes = 0;
-    result = nvstore.get(13, 7, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(13, 7, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(7, actual_len_bytes);
     TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)&(nvstore_testing_buf_set[6]), (uint8_t*)nvstore_testing_buf_get, 7);
     zero_get_array(7);
 
     actual_len_bytes = 0;
-    result = nvstore.get(9, 0, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(9, 0, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(0, actual_len_bytes);
 
     actual_len_bytes = 0;
-    result = nvstore.get(7, 48, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(7, 48, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(48, actual_len_bytes);
     TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)&(nvstore_testing_buf_set[8]), (uint8_t*)nvstore_testing_buf_get, 48);
     zero_get_array(48);
 
     actual_len_bytes = 0;
-    result = nvstore.get(14, 109, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(14, 109, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(109, actual_len_bytes);
     TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)&(nvstore_testing_buf_set[9]), (uint8_t*)nvstore_testing_buf_get, 109);
     zero_get_array(109);
 
     actual_len_bytes = 0;
-    result = nvstore.get(15, 53, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(15, 53, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(53, actual_len_bytes);
     TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)&(nvstore_testing_buf_set[10]), (uint8_t*)nvstore_testing_buf_get, 53);
@@ -385,7 +380,7 @@ void nvstore_basic_functionality_test()
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
 
     actual_len_bytes = 0;
-    result = nvstore.probe(10, 15, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.probe(10, 15, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(15, actual_len_bytes);
     TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)&(nvstore_testing_buf_set[4]), (uint8_t*)nvstore_testing_buf_get, 15);
@@ -394,59 +389,58 @@ void nvstore_basic_functionality_test()
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
 
     actual_len_bytes = 0;
-    result = nvstore.get(10, 15, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(10, 15, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(15, actual_len_bytes);
     TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)&(nvstore_testing_buf_set[4]), (uint8_t*)nvstore_testing_buf_get, 15);
     zero_get_array(15);
 
     actual_len_bytes = 0;
-    result = nvstore.get(11, 27, nvstore_testing_buf_get, &actual_len_bytes); // no care about the buf and len values
+    result = nvstore.get(11, 27, nvstore_testing_buf_get, actual_len_bytes); // no care about the buf and len values
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(27, actual_len_bytes);
     TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)&(nvstore_testing_buf_set[5]), (uint8_t*)nvstore_testing_buf_get, 27);
     zero_get_array(27);
 
     actual_len_bytes = 0;
-    result = nvstore.get(13, 7, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(13, 7, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(7, actual_len_bytes);
     TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)&(nvstore_testing_buf_set[6]), (uint8_t*)nvstore_testing_buf_get, 7);
     zero_get_array(7);
 
     actual_len_bytes = 0;
-    result = nvstore.get(9, 0, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(9, 0, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(0, actual_len_bytes);
 
     actual_len_bytes = 0;
-    result = nvstore.get(7, 48, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(7, 48, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(48, actual_len_bytes);
     TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)&(nvstore_testing_buf_set[8]), (uint8_t*)nvstore_testing_buf_get, 48);
     zero_get_array(48);
 
     actual_len_bytes = 0;
-    result = nvstore.get(14, 109, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(14, 109, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(109, actual_len_bytes);
     TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)&(nvstore_testing_buf_set[9]), (uint8_t*)nvstore_testing_buf_get, 109);
     zero_get_array(109);
 
     actual_len_bytes = 0;
-    result = nvstore.get(15, 53, nvstore_testing_buf_get, &actual_len_bytes);
+    result = nvstore.get(15, 53, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
     TEST_ASSERT_EQUAL(53, actual_len_bytes);
     TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)&(nvstore_testing_buf_set[10]), (uint8_t*)nvstore_testing_buf_get, 53);
     zero_get_array(53);
-#endif // !PROBE_ONLY
+
     nvstore_int_flash_deinit();
 }
 
 
 void nvstore_chunk_iterations_test()
 {
-#if !SOTP_PROBE_ONLY
     nvstore_int_flash_init();
 
     uint32_t *data_array[MAX_KEYS];
@@ -479,7 +473,7 @@ void nvstore_chunk_iterations_test()
         {
             if (data_size_array[i] != 0)
             {
-                result = nvstore.get(i, data_size_array[i], nvstore_testing_buf_get, &actual_len_bytes);
+                result = nvstore.get(i, data_size_array[i], nvstore_testing_buf_get, actual_len_bytes);
                 TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
                 TEST_ASSERT_EQUAL(data_size_array[i], actual_len_bytes);
                 TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)(data_array[i]), (uint8_t*)nvstore_testing_buf_get, data_size_array[i]);
@@ -492,14 +486,12 @@ void nvstore_chunk_iterations_test()
         free(data_array[i]);
     }
     nvstore_int_flash_deinit();
-#endif // !PROBE_ONLY
 }
 
 
 
 void nvstore_garbage_collection_test()
 {
-#if !SOTP_PROBE_ONLY
     nvstore_int_flash_init();
 
     uint32_t nvstore_curr_size = MASTER_RECORD_SIZE;
@@ -529,7 +521,7 @@ void nvstore_garbage_collection_test()
         result = nvstore.set(key, data_size, data_array[key]);
         TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
         data_size_array[key] = data_size;
-        result = nvstore.get(key, data_size_array[key], nvstore_testing_buf_get, &actual_len_bytes);
+        result = nvstore.get(key, data_size_array[key], nvstore_testing_buf_get, actual_len_bytes);
         TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
         TEST_ASSERT_EQUAL(data_size_array[key], actual_len_bytes);
         TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)(data_array[key]), (uint8_t*)nvstore_testing_buf_get, data_size_array[key]);
@@ -540,7 +532,7 @@ void nvstore_garbage_collection_test()
     {
         if (data_size_array[i] != 0)
         {
-            result = nvstore.get(i, data_size_array[i], nvstore_testing_buf_get, &actual_len_bytes);
+            result = nvstore.get(i, data_size_array[i], nvstore_testing_buf_get, actual_len_bytes);
             TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
             TEST_ASSERT_EQUAL(data_size_array[i], actual_len_bytes);
             TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)(data_array[i]), (uint8_t*)nvstore_testing_buf_get, data_size_array[i]);
@@ -556,7 +548,7 @@ void nvstore_garbage_collection_test()
     {
         if (data_size_array[i] != 0)
         {
-            result = nvstore.get(i, data_size_array[i], nvstore_testing_buf_get, &actual_len_bytes);
+            result = nvstore.get(i, data_size_array[i], nvstore_testing_buf_get, actual_len_bytes);
             TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
             TEST_ASSERT_EQUAL(data_size_array[i], actual_len_bytes);
             TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)(data_array[i]), (uint8_t*)nvstore_testing_buf_get, data_size_array[i]);
@@ -570,7 +562,7 @@ void nvstore_garbage_collection_test()
     {
         if (data_size_array[i] != 0)
         {
-            result = nvstore.get(i, data_size_array[i], nvstore_testing_buf_get, &actual_len_bytes);
+            result = nvstore.get(i, data_size_array[i], nvstore_testing_buf_get, actual_len_bytes);
             TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
             TEST_ASSERT_EQUAL(data_size_array[i], actual_len_bytes);
             TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)(data_array[i]), (uint8_t*)nvstore_testing_buf_get, data_size_array[i]);
@@ -583,12 +575,10 @@ void nvstore_garbage_collection_test()
     }
 
     nvstore_int_flash_deinit();
-#endif // !PROBE_ONLY
 }
 
 static void thread_test_check_key(uint16_t key, int check_probe)
 {
-#if !SOTP_PROBE_ONLY
     uint32_t get_buff[MAX_DATA_SIZE/sizeof(uint32_t)];
     int ret;
     uint16_t actual_len_bytes;
@@ -596,10 +586,10 @@ static void thread_test_check_key(uint16_t key, int check_probe)
     NVStore &nvstore = NVStore::get_instance();
 
     if (check_probe) {
-        ret = nvstore.probe(key, MAX_DATA_SIZE, get_buff, &actual_len_bytes);
+        ret = nvstore.probe(key, MAX_DATA_SIZE, get_buff, actual_len_bytes);
     }
     else {
-        ret = nvstore.get(key, MAX_DATA_SIZE, get_buff, &actual_len_bytes);
+        ret = nvstore.get(key, MAX_DATA_SIZE, get_buff, actual_len_bytes);
     }
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, ret);
     TEST_ASSERT_NOT_EQUAL(0, actual_len_bytes);
@@ -629,7 +619,6 @@ static void thread_test_check_key(uint16_t key, int check_probe)
 
     // Got here - always assert
     TEST_ASSERT(0);
-#endif // !PROBE_ONLY
 }
 
 void thread_test_worker()
@@ -660,8 +649,6 @@ void thread_test_worker()
 
 static void run_thread_test(int num_threads)
 {
-#if !SOTP_PROBE_ONLY
-
     int i;
     uint16_t size, max_size;
     uint16_t key;
@@ -725,7 +712,6 @@ static void run_thread_test(int num_threads)
         }
     }
     nvstore_int_flash_deinit();
-#endif // !PROBE_ONLY
 }
 
 
@@ -751,9 +737,7 @@ Case cases[] = {
         Case("NVStore: Chunk iterations",     nvstore_chunk_iterations_test,    greentea_failure_handler),
         Case("NVStore: Garbage collection" ,  nvstore_garbage_collection_test,  greentea_failure_handler),
         Case("NVStore: Single thread test",   nvstore_single_thread_test,       greentea_failure_handler),
-#if NVSTORE_THREAD_SAFE
         Case("NVStore: Multiple thread test", nvstore_multi_thread_test,        greentea_failure_handler),
-#endif
 };
 
 utest::v1::status_t greentea_test_setup(const size_t number_of_cases) {

@@ -1,10 +1,40 @@
 {
-  "name": "nvstore",
-  "config": {
-    "num_types": {
-        "macro_name": "NVSTORE_MAX_KEYS",
-        "value": 16,
-        "help": "Maximal number of allowed NVStore keys"
-    }
-  }
+	"name": "nvstore",
+	"config": {
+		"num_types": {
+	        "macro_name": "NVSTORE_MAX_KEYS",
+	        "value": 16,
+	        "help": "Maximal number of allowed NVStore keys"
+	    },
+	    "area_1_address": {
+	        "macro_name": "NVSTORE_AREA_1_ADDRESS",
+	        "help": "Area 1 address"
+	    },
+	    "area_1_size": {
+	        "macro_name": "NVSTORE_AREA_1_SIZE",
+	        "help": "Area 1 size"
+	    },
+	    "area_2_address": {
+	        "macro_name": "NVSTORE_AREA_2_ADDRESS",
+	        "help": "Area 2 address"
+	    },
+	    "area_2_size": {
+	        "macro_name": "NVSTORE_AREA_2_SIZE",
+	        "help": "Area 2 size"
+	    }
+    },
+	"target_overrides": {
+		"K64F": {
+		    "area_1_address": "0xFE000",
+		    "area_1_size"   : "0x1000",
+		    "area_2_address": "0xFF000",
+		    "area_2_size"   : "0x1000"
+		},
+		"K82F": {
+		    "area_1_address": "0x3E000",
+		    "area_1_size"   : "0x1000",
+		    "area_2_address": "0x3F000",
+		    "area_2_size"   : "0x1000"
+		}
+	}
 }

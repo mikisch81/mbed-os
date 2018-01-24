@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016 ARM Limited. All rights reserved.
+ * Copyright (c) 2018 ARM Limited. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  * Licensed under the Apache License, Version 2.0 (the License); you may
  * not use this file except in compliance with the License.
@@ -17,14 +17,18 @@
 #ifndef __NVSTORE_H
 #define __NVSTORE_H
 
+// These addresses need to be configured according to board (in mbed_lib.json)
+#if defined(NVSTORE_AREA_1_ADDRESS) && defined(NVSTORE_AREA_1_SIZE) && \
+    defined(NVSTORE_AREA_2_ADDRESS) && defined(NVSTORE_AREA_2_SIZE) && \
+    defined(DEVICE_FLASH)
+#define NVSTORE_ENABLED 1
+#endif
+
+#if NVSTORE_ENABLED
 #include <stdint.h>
 #include <stdio.h>
 #include "nvstore_int_flash_wrapper.h"
 #include "nvstore_shared_lock.h"
-
-#ifdef NVSTORE_TESTING
-#undef NVSTORE_PROBE_ONLY
-#endif
 
 enum {
     NVSTORE_SUCCESS                =  0,
@@ -66,7 +70,6 @@ public:
 
     virtual ~NVStore();
 
-#if !NVSTORE_PROBE_ONLY
 /**
  * @brief Returns number of keys.
  *
@@ -93,7 +96,7 @@ public:
  * @param [in] buf
  *               Buffer to store data on (must be aligned to a 32 bit boundary).
  *
- * @param [out] actual_len_bytes.
+ * @param [out] actual_len_bytes
  *               Actual length of returned data
  *
  * @returns NVSTORE_SUCCESS           Value was found on Flash.
@@ -104,7 +107,7 @@ public:
  *          NVSTORE_BUFF_TOO_SMALL    Not enough memory in user buffer.
  *          NVSTORE_BUFF_NOT_ALIGNED  Buffer not aligned to 32 bits.
  */
-    int get(uint16_t key, uint16_t buf_len_bytes, uint32_t *buf, uint16_t *actual_len_bytes);
+    int get(uint16_t key, uint16_t buf_len_bytes, uint32_t *buf, uint16_t &actual_len_bytes);
 
 /**
  * @brief Returns one item of data programmed on Flash, given key.
@@ -112,7 +115,7 @@ public:
  * @param [in] key
  *               Key of stored item.
  *
- * @param [out] actual_len_bytes.
+ * @param [out] actual_len_bytes
  *               Actual length of item
  *
  * @returns NVSTORE_SUCCESS           Value was found on Flash.
@@ -121,7 +124,7 @@ public:
  *          NVSTORE_DATA_CORRUPT      Data on Flash is corrupt.
  *          NVSTORE_BAD_VALUE         Bad value in any of the parameters.
  */
-    int get_item_size(uint16_t key, uint16_t *actual_len_bytes);
+    int get_item_size(uint16_t key, uint16_t &actual_len_bytes);
 
 
 /**
@@ -246,11 +249,11 @@ public:
     int force_garbage_collection();
 #endif
 
-#endif
-
 /**
  * @brief Returns one item of data programmed on Flash, given key.
- *        This is the "initless" version of the function, traversing the flash if triggered.
+ *        This is a self contained version of the get function (not requiring init), traversing the flash each time if triggered.
+ *        This function is NOT thread safe. Its implementation is here for the case we want to minimise code size for clients
+ *        such as boot loaders, performing minimal accesses to NVstore. In this case all other APIs can be commented out.
  *
  * @param [in] key
  *               Key of stored item (must be between 0-15).
@@ -261,7 +264,7 @@ public:
  * @param [in] buf
  *               Buffer to store data on (must be aligned to a 32 bit boundary).
  *
- * @param [out] actual_len_bytes.
+ * @param [out] actual_len_bytes
  *               Actual length of returned data
  *
  * @returns NVSTORE_SUCCESS           Value was found on Flash.
@@ -272,7 +275,7 @@ public:
  *          NVSTORE_BUFF_TOO_SMALL    Not enough memory in user buffer.
  *          NVSTORE_BUFF_NOT_ALIGNED  Buffer not aligned to 32 bits.
  */
-    int probe(uint16_t key, uint16_t buf_len_bytes, uint32_t *buf, uint16_t *actual_len_bytes);
+    int probe(uint16_t key, uint16_t buf_len_bytes, uint32_t *buf, uint16_t &actual_len_bytes);
 
 private:
     int _init_done;
@@ -297,29 +300,30 @@ private:
     int flash_write_area(uint8_t area, uint32_t offset, uint32_t len_bytes, const uint32_t *buf);
     int flash_erase_area(uint8_t area);
 
-    int calc_empty_space(uint8_t area, uint32_t *offset);
+    int calc_empty_space(uint8_t area, uint32_t &offset);
 
     int read_record(uint8_t area, uint32_t offset, uint16_t buf_len_bytes, uint32_t *buf,
-                              uint16_t *actual_len_bytes, int validate_only, int *valid,
-                              uint16_t *key, uint16_t *flags, uint32_t *next_offset);
+                              uint16_t &actual_len_bytes, int validate_only, int &valid,
+                              uint16_t &key, uint16_t &flags, uint32_t &next_offset);
 
     int write_record(uint8_t area, uint32_t offset, uint16_t key, uint16_t flags,
-                               uint32_t data_len, const uint32_t *data_buf, uint32_t *next_offset);
+                               uint32_t data_len, const uint32_t *data_buf, uint32_t &next_offset);
 
-    int write_master_record(uint8_t area, uint16_t version, uint32_t *next_offset);
+    int write_master_record(uint8_t area, uint16_t version, uint32_t &next_offset);
 
     int copy_record(uint8_t from_area, uint32_t from_offset, uint32_t to_offset,
-                              uint32_t *next_offset);
+                              uint32_t &next_offset);
 
     int garbage_collection(uint16_t key, uint16_t flags, uint16_t buf_len_bytes, const uint32_t *buf);
 
-    int do_get(uint16_t key, uint16_t buf_len_bytes, uint32_t *buf, uint16_t *actual_len_bytes,
+    int do_get(uint16_t key, uint16_t buf_len_bytes, uint32_t *buf, uint16_t &actual_len_bytes,
                          int validate_only);
 
     int do_set(uint16_t key, uint16_t buf_len_bytes, const uint32_t *buf, uint16_t flags);
 
 };
 
+#endif // NVSTORE_ENABLED
 
 #endif
 

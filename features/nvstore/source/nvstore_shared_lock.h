@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016 ARM Limited. All rights reserved.
+ * Copyright (c) 2018 ARM Limited. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  * Licensed under the Apache License, Version 2.0 (the License); you may
  * not use this file except in compliance with the License.
@@ -16,8 +16,8 @@
 
 
 
-#ifndef __NVSTORE_OS_WRAPPER_H
-#define __NVSTORE_OS_WRAPPER_H
+#ifndef __NVSTORE_SHARED_LOCK_H
+#define __NVSTORE_SHARED_LOCK_H
 
 #include <stdint.h>
 #include "rtos/Mutex.h"
@@ -29,16 +29,52 @@ enum {
     NVSTORE_OS_NO_MEM_ERR  = -3,
 };
 
+/**
+ * SharedLock, implements a shared/exclusive lock (AKA RW lock).
+ * This class doesn't implement this kind of lock in the classic manner (having two Mutexes and a counter).
+ * Instead, it uses one Mutex and one atomic counter, favouring the shared usage of the exclusive one.
+ */
+
 class SharedLock {
 public:
     SharedLock();
     virtual ~SharedLock();
 
+    /**
+     * @brief Locks the shared lock in a shared manner.
+     *
+     * @returns 0 for success, error code otherwise.
+     */
     int shared_lock();
+
+    /**
+     * @brief Unlocks the shared lock in a shared manner.
+     *
+     * @returns 0 for success, error code otherwise.
+     */
     int shared_unlock();
+
+    /**
+     * @brief Locks the shared lock in an exclusive manner.
+     *
+     * @returns 0 for success, error code otherwise.
+     */
     int exclusive_lock();
+
+    /**
+     * @brief Unlocks the shared lock in an exclusive manner.
+     *
+     * @returns 0 for success, error code otherwise.
+     */
     int exclusive_unlock();
+
+    /**
+     * @brief Promotes the shared lock from shared to exclusive.
+     *
+     * @returns 0 for success, error code otherwise.
+     */
     int promote();
+
 private:
     uint32_t ctr;
     rtos::Mutex  mutex;

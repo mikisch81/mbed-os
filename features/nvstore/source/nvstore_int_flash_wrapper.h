@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016 ARM Limited. All rights reserved.
+ * Copyright (c) 2018 ARM Limited. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  * Licensed under the Apache License, Version 2.0 (the License); you may
  * not use this file except in compliance with the License.
@@ -19,30 +19,83 @@
 #ifndef __NVSTORE_INT_FLASH_WRAPPER_H
 #define __NVSTORE_INT_FLASH_WRAPPER_H
 
-#include <stddef.h>
+#include <stdio.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+/*
+ * This is a simple wrapper for the FlashIAP class, supplying basic flash functionality.
+ */
 
 #define NVSTORE_NUM_AREAS        2
 
 #define NVSTORE_BLANK_FLASH_VAL 0xFF
 
+/**
+ * @brief Returns flash sector size, given address.
+ *
+ * @param [in] address
+ *               Flash address.
+ *
+ * @returns sector size (bytes).
+ */
 size_t nvstore_int_flash_get_sector_size(uint32_t address);
 
+/**
+ * @brief Initialises flash.
+ *
+ * @returns 0 on success, return code otherwise.
+ */
 int nvstore_int_flash_init(void);
 
+/**
+ * @brief Deinitialises flash.
+ *
+ * @returns 0 on success, return code otherwise.
+ */
 int nvstore_int_flash_deinit(void);
 
+/**
+ * @brief Reads from flash into user buffer, given address and size.
+ *
+ * @param [in] size
+ *               Read size
+ *
+ * @param [in] address
+ *               Flash address.
+ *
+ * @param [in] buffer
+ *               User buffer.
+ *
+ * @returns 0 on success, return code otherwise.
+ */
 int nvstore_int_flash_read(size_t size, uint32_t address, uint32_t *buffer);
 
+/**
+ * @brief Erases a chain of sectors, given address and size.
+ *
+ * @param [in] size
+ *               Erase size
+ *
+ * @param [in] address
+ *               Flash address.
+ *
+ * @returns 0 on success, return code otherwise.
+ */
 int nvstore_int_flash_erase(uint32_t address, size_t size);
 
+/**
+ * @brief Writes from user buffer to the flash, given address and size.
+ *
+ * @param [in] size
+ *               Write size
+ *
+ * @param [in] address
+ *               Flash address.
+ *
+ * @param [in] buffer
+ *               User buffer.
+ *
+ * @returns 0 on success, return code otherwise.
+ */
 int nvstore_int_flash_write(size_t size, uint32_t address, const uint32_t *buffer);
-
-#ifdef __cplusplus
-}
-#endif
 
 #endif
