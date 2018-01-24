@@ -50,7 +50,7 @@ static uint32_t nvstore_testing_buf_get[NVSTORE_MAX_NAME_LENGTH] = {0};
 #define THR_TEST_NUM_SECS 10
 #define TEST_THREAD_STACK_SIZE (2048)
 
-#define MAX_NUMBER_OF_THREADS 3
+#define MAX_NUMBER_OF_THREADS 4
 
 static uint32_t *thr_test_buffs[MAX_KEYS][THR_TEST_NUM_BUFFS];
 static uint16_t thr_test_sizes[MAX_KEYS][THR_TEST_NUM_BUFFS];

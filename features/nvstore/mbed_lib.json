@@ -1,7 +1,7 @@
 {
 	"name": "nvstore",
 	"config": {
-		"num_types": {
+		"num_keys": {
 	        "macro_name": "NVSTORE_MAX_KEYS",
 	        "value": 16,
 	        "help": "Maximal number of allowed NVStore keys"

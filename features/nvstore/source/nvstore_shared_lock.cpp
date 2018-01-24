@@ -31,15 +31,15 @@
 // -------------------------------------------------- Functions Implementation ----------------------------------------------------
 
 
-SharedLock::SharedLock() : ctr(0)
+NVstoreSharedLock::NVstoreSharedLock() : ctr(0)
 {
 }
 
-SharedLock::~SharedLock()
+NVstoreSharedLock::~NVstoreSharedLock()
 {
 }
 
-int SharedLock::shared_lock()
+int NVstoreSharedLock::shared_lock()
 {
     mutex.lock();
 
@@ -49,7 +49,7 @@ int SharedLock::shared_lock()
     return NVSTORE_OS_OK;
 }
 
-int SharedLock::shared_unlock()
+int NVstoreSharedLock::shared_unlock()
 {
     int val = core_util_atomic_decr_u32(&ctr, 1);
     if (val < 0) {
@@ -59,7 +59,7 @@ int SharedLock::shared_unlock()
     return NVSTORE_OS_OK;
 }
 
-int SharedLock::exclusive_lock()
+int NVstoreSharedLock::exclusive_lock()
 {
     mutex.lock();
 
@@ -69,14 +69,14 @@ int SharedLock::exclusive_lock()
     return NVSTORE_OS_OK;
 }
 
-int SharedLock::exclusive_unlock()
+int NVstoreSharedLock::exclusive_unlock()
 {
     mutex.unlock();
 
     return NVSTORE_OS_OK;
 }
 
-int SharedLock::promote()
+int NVstoreSharedLock::promote()
 {
     mutex.lock();
     while(ctr > 1) {

@@ -68,7 +68,7 @@ typedef struct {
 
 #define MASTER_RECORD_SIZE sizeof(master_record_data_t)
 
-#define MEDITATE_TIME_MS 100
+#define MEDITATE_TIME_MS 1
 
 typedef struct
 {
@@ -158,7 +158,7 @@ NVStore::~NVStore()
     }
 }
 
-uint16_t NVStore::get_max_keys()
+uint16_t NVStore::get_max_keys() const
 {
     return _max_keys;
 }
@@ -550,40 +550,27 @@ int NVStore::do_get(uint16_t key, uint16_t buf_len_bytes, uint32_t *buf, uint16_
         return NVSTORE_BUFF_NOT_ALIGNED;
     }
 
-    // This loop is required for the case we try to perform reading while GC is in progress.
-    // If so, we have the following cases:
-    // 1. Record is still in the older area. It will be successfully read.
-    // 2. Record was already copied to the new area. Now the _offset_by_key indicates it.
-    // So we have two cases here:
-    // a. Read from new area succeeds. Everything's OK.
-    // b. Read fails (either physically or CRC error). So we know that if the area taken
-    //    from _offset_by_key is different from the active area, a GC is in progress, so
-    //    retry the operation.
-    for (;;) {
-        record_offset = _offset_by_key[key];
-        if (!record_offset) {
-            return NVSTORE_NOT_FOUND;
-        }
+    // We only have issues if we read during GC, so shared lock is required.
+    _write_lock.shared_lock();
+    record_offset = _offset_by_key[key];
 
-        area = (uint8_t) (record_offset >> OFFS_BY_KEY_AREA_BIT_POS) & 1;
-        record_offset &= ~OFFS_BY_KEY_FLAG_MASK;
-
-        ret = read_record(area, record_offset, buf_len_bytes, buf,
-                          actual_len_bytes, validate_only, valid,
-                          read_type, flags, next_offset);
-        if ((ret == NVSTORE_SUCCESS) && valid)
-            break;
-        // In case area is the same as expected, GC is not in progress and we have a genuine error.
-        if (area == _active_area) {
-            if (ret == NVSTORE_SUCCESS) {
-                ret = NVSTORE_DATA_CORRUPT;
-            }
-            PR_ERR("nvstore_do_get: read_record failed with ret %d\n", ret);
-            return ret;
-        }
+    if (!record_offset) {
+        _write_lock.shared_unlock();
+        return NVSTORE_NOT_FOUND;
     }
 
-    return NVSTORE_SUCCESS;
+    area = (uint8_t) (record_offset >> OFFS_BY_KEY_AREA_BIT_POS) & 1;
+    record_offset &= ~OFFS_BY_KEY_FLAG_MASK;
+
+    ret = read_record(area, record_offset, buf_len_bytes, buf,
+                      actual_len_bytes, validate_only, valid,
+                      read_type, flags, next_offset);
+    if ((ret == NVSTORE_SUCCESS) && !valid) {
+        ret = NVSTORE_DATA_CORRUPT;
+    }
+
+    _write_lock.shared_unlock();
+    return ret;
 }
 
 // Start of API functions
@@ -658,18 +645,20 @@ int NVStore::do_set(uint16_t key, uint16_t buf_len_bytes, const uint32_t *buf, u
         }
         else {
             // In the case we have crossed the limit, and the initial offset was also after the limit,
-            // this means we are not first writer (uncommon case). Just wait for GC to complete.
-            // then write record.
-            _write_lock.exclusive_unlock();
+            // this means we are not the first writer (uncommon case). Just wait for GC to complete.
+            // then write the record.
+            _write_lock.shared_unlock();
             for (;;) {
+                rtos::Thread::wait(MEDITATE_TIME_MS);
                 _write_lock.shared_lock();
-                if (save_active_area != _active_area) {
+                new_free_space = safe_increment(_free_space_offset, record_size);
+                // Use the same logics as before to check whether GC is complete
+                if (new_free_space < _size) {
+                    record_offset = new_free_space - _free_space_offset;
                     break;
                 }
                 _write_lock.shared_unlock();
             }
-            new_free_space = safe_increment(_free_space_offset, record_size);
-            record_offset = new_free_space - _free_space_offset;
         }
     }
 
@@ -895,12 +884,9 @@ int NVStore::force_garbage_collection(void)
             return ret;
     }
 
-    if (nvstore_sh_lock_exclusive_lock(_write_lock)) {
-        PR_ERR("nvstore_force_garbage_collection: nvstore_sh_lock_exclusive_lock failed");
-        return NVSTORE_OS_ERROR;
-    }
-    ret = garbage_collection(NO_KEY, 0, NULL);
-    nvstore_sh_lock_exclusive_release(_write_lock);
+    _write_lock.exclusive_lock();
+    ret = garbage_collection(NO_KEY, 0, 0, NULL);
+    _write_lock.exclusive_release();
     return ret;
 }
 

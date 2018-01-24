@@ -35,10 +35,10 @@ enum {
  * Instead, it uses one Mutex and one atomic counter, favouring the shared usage of the exclusive one.
  */
 
-class SharedLock {
+class NVstoreSharedLock {
 public:
-    SharedLock();
-    virtual ~SharedLock();
+    NVstoreSharedLock();
+    virtual ~NVstoreSharedLock();
 
     /**
      * @brief Locks the shared lock in a shared manner.

@@ -33,21 +33,20 @@ Each area must consist of one or more erasable units (sectors).
 
 ### Configuring NVStore for your board
 NVStore requires the addresses and sizes of both areas in flash. For this purpose, the following values should be defined in 
-configuration:
-NVSTORE_AREA_1_ADDRESS
-NVSTORE_AREA_1_SIZE 
-NVSTORE_AREA_2_ADDRESS
-NVSTORE_AREA_2_SIZE
-This is currently supported by the K64F and K82F boards, while these values are configured in the targets.json file. Any new board
-supporting this feature should have these values added there. 
+mbed_lib.json, for each supported board:
+- area_1_address
+- area_1_size 
+- area_2_address
+- area_2_size 
 
-### Building NVStore
-The default value of number of different keys can be set by the NVSTORE_MAX_KEYS define in mbed_lib.json .
+In addition, the num_keys value should be modified, in order to change the default number of different keys.  
 
 ### Using NVStore
 NVStore is a singleton class, meaning that the system can have only a single instance of it.
 To instanciate NVStore, one needs to call its get_instance member function as following:
+``` c++
     NVStore &nvstore = NVStore::get_instance();
+```
 After the NVStore instantiation, one can call the init API, but it is not necessary, as all
 NVStore APIs (get, set et al.) perform a "lazy initialization".
 

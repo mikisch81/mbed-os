@@ -27,6 +27,7 @@
 #if NVSTORE_ENABLED
 #include <stdint.h>
 #include <stdio.h>
+#include "platform/NonCopyable.h"
 #include "nvstore_int_flash_wrapper.h"
 #include "nvstore_shared_lock.h"
 
@@ -48,7 +49,7 @@ enum {
 #define NVSTORE_MAX_KEYS 16
 #endif
 
-class NVStore {
+class NVStore : private mbed::NonCopyable<NVStore> {
 public:
 
 /**
@@ -75,7 +76,7 @@ public:
  *
  * @returns Number of keys.
  */
-    uint16_t get_max_keys();
+    uint16_t get_max_keys() const;
 
 /**
  * @brief Set number of keys.
@@ -87,17 +88,13 @@ public:
 /**
  * @brief Returns one item of data programmed on Flash, given key.
  *
- * @param [in] key
- *               Key of stored item.
+ * @param[in]  key                  Key of stored item.
  *
- * @param [in] buf_len_bytes
- *               Length of input buffer in bytes.
+ * @param[in]  buf_len_bytes        Length of input buffer in bytes.
  *
- * @param [in] buf
- *               Buffer to store data on (must be aligned to a 32 bit boundary).
+ * @param[in]  buf                  Buffer to store data on (must be aligned to a 32 bit boundary).
  *
- * @param [out] actual_len_bytes
- *               Actual length of returned data
+ * @param[out] actual_len_bytes     Actual length of returned data
  *
  * @returns NVSTORE_SUCCESS           Value was found on Flash.
  *          NVSTORE_NOT_FOUND         Value was not found on Flash.
@@ -112,11 +109,9 @@ public:
 /**
  * @brief Returns one item of data programmed on Flash, given key.
  *
- * @param [in] key
- *               Key of stored item.
+ * @param[in]  key                  Key of stored item.
  *
- * @param [out] actual_len_bytes
- *               Actual length of item
+ * @param[out] actual_len_bytes     Actual length of item
  *
  * @returns NVSTORE_SUCCESS           Value was found on Flash.
  *          NVSTORE_NOT_FOUND         Value was not found on Flash.
@@ -130,14 +125,11 @@ public:
 /**
  * @brief Programs one item of data on Flash, given key.
  *
- * @param [in] key
- *               Key of stored item.
+ * @param[in]  key                  Key of stored item.
  *
- * @param [in] buf_len_bytes
- *               Item length in bytes.
+ * @param[in]  buf_len_bytes        Item length in bytes.
  *
- * @param [in] buf
- *               Buffer containing data  (must be aligned to a 32 bit boundary).
+ * @param[in]  buf                  Buffer containing data  (must be aligned to a 32 bit boundary).
  *
  * @returns NVSTORE_SUCCESS           Value was successfully written on Flash.
  *          NVSTORE_WRITE_ERROR       Physical error writing data.
@@ -153,14 +145,11 @@ public:
 /**
  * @brief Programs one item of data on Flash, given key, allowing no consequent sets to this key.
  *
- * @param [in] key
- *               Key of stored item.
+ * @param[in]  key                  Key of stored item.
  *
- * @param [in] buf_len_bytes
- *               Item length in bytes.
+ * @param[in]  buf_len_bytes        Item length in bytes.
  *
- * @param [in] buf
- *               Buffer containing data  (must be aligned to a 32 bit boundary).
+ * @param[in]  buf                  Buffer containing data  (must be aligned to a 32 bit boundary).
  *
  * @returns NVSTORE_SUCCESS           Value was successfully written on Flash.
  *          NVSTORE_WRITE_ERROR       Physical error writing data.
@@ -177,14 +166,7 @@ public:
 /**
  * @brief Remove an item from flash.
  *
- * @param [in] key
- *               Key of stored item.
- *
- * @param [in] buf_len_bytes
- *               Item length in bytes.
- *
- * @param [in] buf
- *               Buffer containing data  (must be aligned to a 32 bit boundary).
+ * @param[in]  key                  Key of stored item.
  *
  * @returns NVSTORE_SUCCESS           Value was successfully written on Flash.
  *          NVSTORE_WRITE_ERROR       Physical error writing data.
@@ -255,17 +237,13 @@ public:
  *        This function is NOT thread safe. Its implementation is here for the case we want to minimise code size for clients
  *        such as boot loaders, performing minimal accesses to NVstore. In this case all other APIs can be commented out.
  *
- * @param [in] key
- *               Key of stored item (must be between 0-15).
+ * @param[in]  key                  Key of stored item (must be between 0-15).
  *
- * @param [in] buf_len_bytes
- *               Length of input buffer in bytes.
+ * @param[in]  buf_len_bytes        Length of input buffer in bytes.
  *
- * @param [in] buf
- *               Buffer to store data on (must be aligned to a 32 bit boundary).
+ * @param[in]  buf                  Buffer to store data on (must be aligned to a 32 bit boundary).
  *
- * @param [out] actual_len_bytes
- *               Actual length of returned data
+ * @param[out] actual_len_bytes     Actual length of returned data
  *
  * @returns NVSTORE_SUCCESS           Value was found on Flash.
  *          NVSTORE_NOT_FOUND         Value was not found on Flash.
@@ -285,16 +263,11 @@ private:
     uint16_t _active_area_version;
     uint32_t _free_space_offset;
     uint32_t _size;
-    SharedLock _write_lock;
+    NVstoreSharedLock _write_lock;
     uint32_t *_offset_by_key;
 
     // Private constructor, as class is a singleton
     NVStore();
-
-    // Declare these (not implemented) to make sure they're not accidentally declared
-    // by derived classes
-    NVStore(NVStore const&);
-    void operator=(NVStore const&);
 
     int flash_read_area(uint8_t area, uint32_t offset, uint32_t len_bytes, uint32_t *buf);
     int flash_write_area(uint8_t area, uint32_t offset, uint32_t len_bytes, const uint32_t *buf);

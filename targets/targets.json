@@ -615,7 +615,7 @@
         "inherits": ["Target"],
         "detect_code": ["0240"],
         "device_has": ["ANALOGIN", "ANALOGOUT", "I2C", "I2CSLAVE", "INTERRUPTIN", "LOWPOWERTIMER", "PORTIN", "PORTINOUT", "PORTOUT", "PWMOUT", "RTC", "SERIAL", "SERIAL_FC", "SERIAL_ASYNCH", "SLEEP", "SPI", "SPI_ASYNCH", "SPISLAVE", "STDIO_MESSAGES", "STORAGE", "TRNG", "FLASH"],
-        "features": ["LWIP", "STORAGE" ,"NVSTORE"],
+        "features": ["LWIP", "STORAGE"],
         "release_versions": ["2", "5"],
         "device_name": "MK64FN1M0xxx12",
         "bootloader_supported": true
@@ -692,7 +692,6 @@
         "inherits": ["Target"],
         "detect_code": ["0217"],
         "device_has": ["ANALOGIN", "ANALOGOUT", "I2C", "I2CSLAVE", "INTERRUPTIN", "LOWPOWERTIMER", "PORTIN", "PORTINOUT", "PORTOUT", "PWMOUT", "RTC", "SERIAL", "SLEEP", "SPI", "SPISLAVE", "STDIO_MESSAGES", "TRNG", "FLASH"],
-        "features": ["NVSTORE"],
         "release_versions": ["2", "5"],
         "device_name": "MK82FN256xxx15"
     },

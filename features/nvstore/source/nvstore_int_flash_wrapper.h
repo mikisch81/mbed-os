@@ -32,8 +32,7 @@
 /**
  * @brief Returns flash sector size, given address.
  *
- * @param [in] address
- *               Flash address.
+ * @param[in]  address              Flash address.
  *
  * @returns sector size (bytes).
  */
@@ -56,14 +55,11 @@ int nvstore_int_flash_deinit(void);
 /**
  * @brief Reads from flash into user buffer, given address and size.
  *
- * @param [in] size
- *               Read size
+ * @param[in]  size                 Read size
  *
- * @param [in] address
- *               Flash address.
+ * @param[in]  address              Flash address.
  *
- * @param [in] buffer
- *               User buffer.
+ * @param[in]  buffer               User buffer.
  *
  * @returns 0 on success, return code otherwise.
  */
@@ -72,11 +68,9 @@ int nvstore_int_flash_read(size_t size, uint32_t address, uint32_t *buffer);
 /**
  * @brief Erases a chain of sectors, given address and size.
  *
- * @param [in] size
- *               Erase size
+ * @param[in]  size                 Erase size
  *
- * @param [in] address
- *               Flash address.
+ * @param[in]  address              Flash address.
  *
  * @returns 0 on success, return code otherwise.
  */
@@ -85,14 +79,11 @@ int nvstore_int_flash_erase(uint32_t address, size_t size);
 /**
  * @brief Writes from user buffer to the flash, given address and size.
  *
- * @param [in] size
- *               Write size
+ * @param[in]  size                 Write size
  *
- * @param [in] address
- *               Flash address.
+ * @param[in]  address              Flash address.
  *
- * @param [in] buffer
- *               User buffer.
+ * @param[in]  buffer               User buffer.
  *
  * @returns 0 on success, return code otherwise.
  */
