@@ -20,7 +20,7 @@
 
 #include "nvstore_shared_lock.h"
 #include "mbed_critical.h"
-#include "rtos/thread.h"
+#include "Thread.h"
 #include <stdio.h>
 
 

@@ -263,7 +263,7 @@ private:
     uint16_t _active_area_version;
     uint32_t _free_space_offset;
     uint32_t _size;
-    NVstoreSharedLock _write_lock;
+    NVstoreSharedLock _lock;
     uint32_t *_offset_by_key;
 
     // Private constructor, as class is a singleton

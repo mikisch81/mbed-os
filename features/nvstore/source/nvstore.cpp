@@ -21,7 +21,7 @@
 #include "nvstore_shared_lock.h"
 #include "mbed_critical.h"
 #include "mbed_assert.h"
-#include "thread.h"
+#include "Thread.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -551,11 +551,11 @@ int NVStore::do_get(uint16_t key, uint16_t buf_len_bytes, uint32_t *buf, uint16_
     }
 
     // We only have issues if we read during GC, so shared lock is required.
-    _write_lock.shared_lock();
+    _lock.shared_lock();
     record_offset = _offset_by_key[key];
 
     if (!record_offset) {
-        _write_lock.shared_unlock();
+        _lock.shared_unlock();
         return NVSTORE_NOT_FOUND;
     }
 
@@ -569,7 +569,7 @@ int NVStore::do_get(uint16_t key, uint16_t buf_len_bytes, uint32_t *buf, uint16_
         ret = NVSTORE_DATA_CORRUPT;
     }
 
-    _write_lock.shared_unlock();
+    _lock.shared_unlock();
     return ret;
 }
 
@@ -620,7 +620,7 @@ int NVStore::do_set(uint16_t key, uint16_t buf_len_bytes, const uint32_t *buf, u
 
     // writers do not lock each other exclusively, but can operate in parallel.
     // Shared lock is in order to prevent GC from operating (which uses exclusive lock).
-    _write_lock.shared_lock();
+    _lock.shared_lock();
 
     save_active_area = _active_area;
     record_size = align_up(sizeof(record_header_t) + buf_len_bytes, FLASH_MINIMAL_PROG_UNIT);
@@ -632,32 +632,29 @@ int NVStore::do_set(uint16_t key, uint16_t buf_len_bytes, const uint32_t *buf, u
     new_free_space = safe_increment(_free_space_offset, record_size);
     record_offset = new_free_space - record_size;
 
+retry:
     // If we cross the area limit, we need to invoke GC. However, we should consider all the cases
     // where writers work in parallel, and we only want the FIRST writer to invoke GC.
     if (new_free_space >= _size) {
         // In the case we have crossed the limit, but the initial offset was still before the limit, this
-        // means we are the first writer (common case). Exclusively lock _write_lock, and invoke GC.
+        // means we are the first writer (common case). Exclusively lock _lock, and invoke GC.
         if (record_offset < _size) {
-            _write_lock.promote();
+            _lock.promote();
             ret = garbage_collection(key, flags, buf_len_bytes, buf);
-            _write_lock.exclusive_unlock();
+            _lock.exclusive_unlock();
             return ret;
         }
         else {
             // In the case we have crossed the limit, and the initial offset was also after the limit,
             // this means we are not the first writer (uncommon case). Just wait for GC to complete.
-            // then write the record.
-            _write_lock.shared_unlock();
+            // then retry the operation
+            _lock.shared_unlock();
             for (;;) {
                 rtos::Thread::wait(MEDITATE_TIME_MS);
-                _write_lock.shared_lock();
+                // Retry operation
+                _lock.shared_lock();
                 new_free_space = safe_increment(_free_space_offset, record_size);
-                // Use the same logics as before to check whether GC is complete
-                if (new_free_space < _size) {
-                    record_offset = new_free_space - _free_space_offset;
-                    break;
-                }
-                _write_lock.shared_unlock();
+                goto retry;
             }
         }
     }
@@ -665,7 +662,7 @@ int NVStore::do_set(uint16_t key, uint16_t buf_len_bytes, const uint32_t *buf, u
     // Now write the record
     ret = write_record(_active_area, record_offset, key, flags, buf_len_bytes, buf, next_offset);
     if (ret != NVSTORE_SUCCESS) {
-        _write_lock.shared_unlock();
+        _lock.shared_unlock();
         return ret;
     }
 
@@ -676,7 +673,7 @@ int NVStore::do_set(uint16_t key, uint16_t buf_len_bytes, const uint32_t *buf, u
         _offset_by_key[key] = record_offset | (_active_area << OFFS_BY_KEY_AREA_BIT_POS) |
                                 (((flags & SET_ONCE_FLAG) != 0) << OFFS_BY_KEY_SET_ONCE_BIT_POS);
 
-    _write_lock.shared_unlock();
+    _lock.shared_unlock();
 
     return NVSTORE_SUCCESS;
 }
@@ -884,9 +881,9 @@ int NVStore::force_garbage_collection(void)
             return ret;
     }
 
-    _write_lock.exclusive_lock();
+    _lock.exclusive_lock();
     ret = garbage_collection(NO_KEY, 0, 0, NULL);
-    _write_lock.exclusive_release();
+    _lock.exclusive_release();
     return ret;
 }
 

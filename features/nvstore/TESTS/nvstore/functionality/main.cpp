@@ -17,7 +17,7 @@
 #include "nvstore.h"
 #include "nvstore_int_flash_wrapper.h"
 #include "nvstore_shared_lock.h"
-#include "thread.h"
+#include "Thread.h"
 #include "greentea-client/test_env.h"
 #include "unity/unity.h"
 #include "utest/utest.h"
