@@ -31,27 +31,47 @@
 // -------------------------------------------------- Functions Implementation ----------------------------------------------------
 
 
-NVstoreSharedLock::NVstoreSharedLock() : ctr(0)
+NVstoreSharedLock::NVstoreSharedLock() : _ctr(0), _mutex(0)
 {
+    reset();
 }
 
 NVstoreSharedLock::~NVstoreSharedLock()
 {
+    delete _mutex;
+}
+
+int NVstoreSharedLock::reset()
+{
+    // Reallocate mutex. Good in cases it's taken by a terminated thread (can be relevant in tests).
+    if (_mutex) {
+        delete _mutex;
+        _mutex = 0;
+    }
+
+    if (!_mutex) {
+        _mutex = new rtos::Mutex;
+        MBED_ASSERT(_mutex);
+    }
+
+    _ctr = 0;
+
+    return 0;
 }
 
 int NVstoreSharedLock::shared_lock()
 {
-    mutex.lock();
+    _mutex->lock();
 
-    core_util_atomic_incr_u32(&ctr, 1);
+    core_util_atomic_incr_u32(&_ctr, 1);
 
-    mutex.unlock();
+    _mutex->unlock();
     return NVSTORE_OS_OK;
 }
 
 int NVstoreSharedLock::shared_unlock()
 {
-    int val = core_util_atomic_decr_u32(&ctr, 1);
+    int val = core_util_atomic_decr_u32(&_ctr, 1);
     if (val < 0) {
         return NVSTORE_OS_RTOS_ERR;
     }
@@ -61,9 +81,9 @@ int NVstoreSharedLock::shared_unlock()
 
 int NVstoreSharedLock::exclusive_lock()
 {
-    mutex.lock();
+    _mutex->lock();
 
-    while(ctr)
+    while(_ctr)
         rtos::Thread::wait(MEDITATE_TIME_MS);
 
     return NVSTORE_OS_OK;
@@ -71,23 +91,23 @@ int NVstoreSharedLock::exclusive_lock()
 
 int NVstoreSharedLock::exclusive_unlock()
 {
-    mutex.unlock();
+    _mutex->unlock();
 
     return NVSTORE_OS_OK;
 }
 
 int NVstoreSharedLock::promote()
 {
-    mutex.lock();
-    while(ctr > 1) {
+    _mutex->lock();
+    while(_ctr > 1) {
         rtos::Thread::wait(MEDITATE_TIME_MS);
     }
 
-    if (ctr != 1) {
+    if (_ctr != 1) {
         return NVSTORE_OS_RTOS_ERR;
     }
 
-    core_util_atomic_decr_u32(&ctr, 1);
+    core_util_atomic_decr_u32(&_ctr, 1);
 
     return NVSTORE_OS_OK;
 }

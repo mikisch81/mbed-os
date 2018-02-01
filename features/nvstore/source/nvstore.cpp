@@ -456,8 +456,8 @@ int NVStore::copy_record(uint8_t from_area, uint32_t from_offset, uint32_t to_of
 int NVStore::garbage_collection(uint16_t key, uint16_t flags, uint16_t buf_len_bytes, const uint32_t *buf)
 {
     uint32_t curr_offset, new_area_offset, next_offset;
-    uint8_t curr_area;
     int ret;
+    uint8_t curr_area;
 
     new_area_offset = sizeof(record_header_t) + sizeof(master_record_data_t);
 
@@ -467,7 +467,6 @@ int NVStore::garbage_collection(uint16_t key, uint16_t flags, uint16_t buf_len_b
     if ((key != NO_KEY) && !(flags & DELETE_ITEM_FLAG)) {
         ret = write_record(1 - _active_area, new_area_offset, key, 0, buf_len_bytes, buf, next_offset);
         if (ret != NVSTORE_SUCCESS) {
-            PR_ERR("nvstore_garbage_collection: write_record failed with ret %d\n", ret);
             return ret;
         }
         _offset_by_key[key] = new_area_offset | (1-_active_area) << OFFS_BY_KEY_AREA_BIT_POS |
@@ -486,7 +485,6 @@ int NVStore::garbage_collection(uint16_t key, uint16_t flags, uint16_t buf_len_b
             continue;
         ret = copy_record(curr_area, curr_offset, new_area_offset, next_offset);
         if (ret != NVSTORE_SUCCESS) {
-            PR_ERR("nvstore_garbage_collection: copy_record failed with ret %d\n", ret);
             return ret;
         }
         _offset_by_key[key] = new_area_offset | (1-curr_area) << OFFS_BY_KEY_AREA_BIT_POS | save_flags;
@@ -497,7 +495,6 @@ int NVStore::garbage_collection(uint16_t key, uint16_t flags, uint16_t buf_len_b
     _active_area_version++;
     ret = write_master_record(1 - _active_area, _active_area_version, next_offset);
     if (ret != NVSTORE_SUCCESS) {
-        PR_ERR("nvstore_garbage_collection: write_master_record failed with ret %d\n", ret);
         return ret;
     }
 
@@ -526,10 +523,10 @@ int NVStore::do_get(uint16_t key, uint16_t buf_len_bytes, uint32_t *buf, uint16_
                            int validate_only)
 {
     int ret = NVSTORE_SUCCESS;
-    uint32_t record_offset, next_offset;
-    uint8_t area;
-    uint16_t read_type, flags;
     int valid;
+    uint32_t record_offset, next_offset;
+    uint16_t read_type, flags;
+    uint8_t area;
 
     if (!_init_done) {
         ret = init();
@@ -590,7 +587,6 @@ int NVStore::do_set(uint16_t key, uint16_t buf_len_bytes, const uint32_t *buf, u
     int ret = NVSTORE_SUCCESS;
     uint32_t record_offset, record_size, new_free_space;
     uint32_t next_offset;
-    uint8_t save_active_area;
 
     if (!_init_done) {
         ret = init();
@@ -618,12 +614,12 @@ int NVStore::do_set(uint16_t key, uint16_t buf_len_bytes, const uint32_t *buf, u
         return NVSTORE_ALREADY_EXISTS;
     }
 
+    record_size = align_up(sizeof(record_header_t) + buf_len_bytes, FLASH_MINIMAL_PROG_UNIT);
+
+retry:
     // writers do not lock each other exclusively, but can operate in parallel.
     // Shared lock is in order to prevent GC from operating (which uses exclusive lock).
     _lock.shared_lock();
-
-    save_active_area = _active_area;
-    record_size = align_up(sizeof(record_header_t) + buf_len_bytes, FLASH_MINIMAL_PROG_UNIT);
 
     // Parallel operation of writers is allowed due to this atomic operation. This operation
     // produces an offset on which each writer can work separately, without being interrupted
@@ -632,7 +628,6 @@ int NVStore::do_set(uint16_t key, uint16_t buf_len_bytes, const uint32_t *buf, u
     new_free_space = safe_increment(_free_space_offset, record_size);
     record_offset = new_free_space - record_size;
 
-retry:
     // If we cross the area limit, we need to invoke GC. However, we should consider all the cases
     // where writers work in parallel, and we only want the FIRST writer to invoke GC.
     if (new_free_space >= _size) {
@@ -649,13 +644,9 @@ retry:
             // this means we are not the first writer (uncommon case). Just wait for GC to complete.
             // then retry the operation
             _lock.shared_unlock();
-            for (;;) {
-                rtos::Thread::wait(MEDITATE_TIME_MS);
-                // Retry operation
-                _lock.shared_lock();
-                new_free_space = safe_increment(_free_space_offset, record_size);
-                goto retry;
-            }
+            rtos::Thread::wait(MEDITATE_TIME_MS);
+            // Retry operation
+            goto retry;
         }
     }
 
@@ -695,19 +686,17 @@ int NVStore::remove(uint16_t key)
 
 int NVStore::init()
 {
-    uint8_t area;
-    uint16_t key;
-    uint16_t flags;
-    int os_ret;
-    int ret = NVSTORE_SUCCESS;
-    uint32_t _init_attempts_val;
     area_state_e area_state[NVSTORE_NUM_AREAS];
     uint32_t free_space_offset_of_area[NVSTORE_NUM_AREAS];
-    uint16_t versions[NVSTORE_NUM_AREAS];
+    uint32_t init_attempts_val;
     uint32_t next_offset;
-    master_record_data_t master_rec;
-    uint16_t actual_len_bytes;
+    int os_ret;
+    int ret = NVSTORE_SUCCESS;
     int valid;
+    uint16_t key;
+    uint16_t flags;
+    uint16_t versions[NVSTORE_NUM_AREAS];
+    uint16_t actual_len_bytes;
 
     if (_init_done)
         return NVSTORE_SUCCESS;
@@ -715,8 +704,8 @@ int NVStore::init()
     // This handles the case that init function is called by more than one thread concurrently.
     // Only the one who gets the value of 1 in _init_attempts_val will proceed, while others will
     // wait until init is finished.
-    _init_attempts_val = safe_increment(_init_attempts, 1);
-    if (_init_attempts_val != 1) {
+    init_attempts_val = safe_increment(_init_attempts, 1);
+    if (init_attempts_val != 1) {
         while(!_init_done)
             rtos::Thread::wait(MEDITATE_TIME_MS);
         return NVSTORE_SUCCESS;
@@ -731,7 +720,7 @@ int NVStore::init()
 
     _size = (uint32_t) -1;
     nvstore_int_flash_init();
-    for (area = 0; area < NVSTORE_NUM_AREAS; area++) {
+    for (uint8_t area = 0; area < NVSTORE_NUM_AREAS; area++) {
         area_state[area] = AREA_STATE_NONE;
         free_space_offset_of_area[area] =  0;
         versions[area] = 0;
@@ -753,6 +742,7 @@ int NVStore::init()
         }
 
         // Check validity of master record
+        master_record_data_t master_rec;
         ret = read_record(area, 0, sizeof(master_rec), (uint32_t *) &master_rec,
                           actual_len_bytes, 0, valid,
                           key, flags, next_offset);
@@ -833,6 +823,7 @@ int NVStore::deinit()
 {
     if (_init_done) {
         nvstore_int_flash_deinit();
+        _lock.reset();
         delete[] _offset_by_key;
     }
 
@@ -846,6 +837,10 @@ int NVStore::reset()
 {
     uint8_t area;
     int os_ret;
+
+    if (!_init_done) {
+        init();
+    }
 
     // Erase both areas, and reinitialize the module. This is totally not thread safe,
     // as init doesn't take the case of re-initialization into account. It's OK, as this function
@@ -869,45 +864,23 @@ uint32_t NVStore::size()
     return _size;
 }
 
-#ifdef NVSTORE_TESTING
-
-int NVStore::force_garbage_collection(void)
-{
-    int ret;
-
-    if (!_init_done) {
-        ret = init();
-        if (ret != NVSTORE_SUCCESS)
-            return ret;
-    }
-
-    _lock.exclusive_lock();
-    ret = garbage_collection(NO_KEY, 0, 0, NULL);
-    _lock.exclusive_release();
-    return ret;
-}
-
-#endif
-
-
 int NVStore::probe(uint16_t key, uint16_t buf_len_bytes, uint32_t *buf, uint16_t &actual_len_bytes)
 {
-
-    uint8_t area;
-    int sel_area = -1;
-    uint16_t read_type;
-    uint16_t flags;
-    int os_ret;
-    int ret = NVSTORE_SUCCESS, save_ret = NVSTORE_SUCCESS;
     uint32_t free_space_offset_of_area = 0;
     uint32_t curr_offset = 0, next_offset;
-    master_record_data_t master_rec;
-    uint16_t prev_version = 0;
-    uint16_t tmp_actual_len_bytes;
+    int sel_area = -1;
+    int os_ret;
+    int ret = NVSTORE_SUCCESS, save_ret = NVSTORE_SUCCESS;
     int valid;
     int found = 0;
+    uint16_t prev_version = 0;
+    uint16_t tmp_actual_len_bytes;
+    uint16_t read_type;
+    uint16_t flags;
+    uint8_t area;
 
     for (area = 0; area < NVSTORE_NUM_AREAS; area++) {
+        master_record_data_t master_rec;
         // Check validity of master record
         ret = read_record(area, 0, sizeof(master_rec), (uint32_t *) &master_rec,
                           actual_len_bytes, 0, valid,
@@ -919,7 +892,6 @@ int NVStore::probe(uint16_t key, uint16_t buf_len_bytes, uint32_t *buf, uint16_t
                 continue;
             }
             else {
-                PR_ERR("nvstore_probe_type: read_record failed with err code 0x%x\n", ret);
                 return ret;
             }
         }
@@ -949,8 +921,6 @@ int NVStore::probe(uint16_t key, uint16_t buf_len_bytes, uint32_t *buf, uint16_t
     area = (uint8_t) sel_area;
     os_ret = calc_empty_space(area, free_space_offset_of_area);
     if (os_ret) {
-        PR_ERR("nvstore_probe_type: calc_empty_space failed with err code 0x%lx\n",
-                (unsigned long) os_ret);
         return NVSTORE_READ_ERROR;
     }
 
@@ -962,7 +932,6 @@ int NVStore::probe(uint16_t key, uint16_t buf_len_bytes, uint32_t *buf, uint16_t
                           tmp_actual_len_bytes, 1, valid,
                           read_type, flags, next_offset);
         if (ret != NVSTORE_SUCCESS) {
-            PR_ERR("nvstore_probe_type: read_record failed with err code 0x%x\n", ret);
             return ret;
         }
         if (!valid) {

@@ -107,7 +107,7 @@ public:
     int get(uint16_t key, uint16_t buf_len_bytes, uint32_t *buf, uint16_t &actual_len_bytes);
 
 /**
- * @brief Returns one item of data programmed on Flash, given key.
+ * @brief Returns size of the data programmed on Flash, given key.
  *
  * @param[in]  key                  Key of stored item.
  *
@@ -216,20 +216,6 @@ public:
  */
     uint32_t size();
 
-
-#ifdef NVSTORE_TESTING
-
-/**
- * @brief Initiate a forced garbage collection.
- *
- * @returns NVSTORE_SUCCESS       GC completed successfully.
- *          NVSTORE_READ_ERROR    Physical error reading data.
- *          NVSTORE_WRITE_ERROR   Physical error writing data.
- *          NVSTORE_FLASH_AREA_TOO_SMALL
- *                             Not enough space in Flash area.
- */
-    int force_garbage_collection();
-#endif
 
 /**
  * @brief Returns one item of data programmed on Flash, given key.

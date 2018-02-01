@@ -41,6 +41,13 @@ public:
     virtual ~NVstoreSharedLock();
 
     /**
+     * @brief Resets the shared lock.
+     *
+     * @returns 0 for success, error code otherwise.
+     */
+    int reset();
+
+    /**
      * @brief Locks the shared lock in a shared manner.
      *
      * @returns 0 for success, error code otherwise.
@@ -76,8 +83,8 @@ public:
     int promote();
 
 private:
-    uint32_t ctr;
-    rtos::Mutex  mutex;
+    uint32_t _ctr;
+    rtos::Mutex  *_mutex;
 };
 
 

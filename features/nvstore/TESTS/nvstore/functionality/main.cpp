@@ -48,9 +48,9 @@ static uint32_t nvstore_testing_buf_get[NVSTORE_MAX_NAME_LENGTH] = {0};
 
 #define THR_TEST_NUM_BUFFS 10
 #define THR_TEST_NUM_SECS 10
-#define TEST_THREAD_STACK_SIZE (2048)
+#define THREAD_STACK_SIZE (2048)
 
-#define MAX_NUMBER_OF_THREADS 4
+#define MAX_NUMBER_OF_THREADS 6
 
 static uint32_t *thr_test_buffs[MAX_KEYS][THR_TEST_NUM_BUFFS];
 static uint16_t thr_test_sizes[MAX_KEYS][THR_TEST_NUM_BUFFS];
@@ -141,10 +141,60 @@ void nvstore_basic_flash_test()
     nvstore_int_flash_deinit();
 }
 
+#define SHLOCK_TEST_NUM_THREADS 6
+static uint32_t shlock_test_arr[SHLOCK_TEST_NUM_THREADS];
+static int shlock_test_ctr = 0;
+static NVstoreSharedLock lock;
+
+static void shared_lock_test_reader(void *read_val)
+{
+    lock.shared_lock();
+    *(uint32_t *) read_val = shlock_test_arr[shlock_test_ctr];
+    lock.shared_unlock();
+}
+
+static void shared_lock_test_writer()
+{
+    lock.exclusive_lock();
+    shlock_test_arr[shlock_test_ctr++]++;
+    lock.exclusive_unlock();
+}
+
+void nvstore_shared_lock_test()
+{
+    int i;
+    rtos::Thread *threads[SHLOCK_TEST_NUM_THREADS];
+    uint32_t read_vals[] = {0, 0, 0};
+
+    for (i = 0; i < SHLOCK_TEST_NUM_THREADS; i++) {
+        threads[i] = new rtos::Thread(osPriorityBelowNormal, THREAD_STACK_SIZE);
+    }
+
+    memset(shlock_test_arr, 0, sizeof(shlock_test_arr));
+
+    threads[0]->start(callback(shared_lock_test_writer));
+    threads[1]->start(callback(shared_lock_test_writer));
+    threads[2]->start(callback(shared_lock_test_writer));
+    threads[3]->start(callback(shared_lock_test_reader, (void*) &read_vals[0]));
+    threads[4]->start(callback(shared_lock_test_reader, (void*) &read_vals[1]));
+    threads[5]->start(callback(shared_lock_test_reader, (void*) &read_vals[2]));
+
+    for (i = 0; i < SHLOCK_TEST_NUM_THREADS; i++) {
+        threads[i]->join();
+    }
+
+    for (i = 0; i < 3; i++) {
+        TEST_ASSERT_EQUAL(1, shlock_test_arr[i]);
+        TEST_ASSERT((read_vals[i] == 0) || (read_vals[i] == 1));
+    }
+
+    for (i = 0; i < SHLOCK_TEST_NUM_THREADS; i++) {
+        delete threads[i];
+    }
+}
+
 void nvstore_basic_functionality_test()
 {
-
-    nvstore_int_flash_init();
 
     uint16_t actual_len_bytes = 0;
     NVStore &nvstore = NVStore::get_instance();
@@ -324,11 +374,6 @@ void nvstore_basic_functionality_test()
     result = nvstore.set(15, 53, &(nvstore_testing_buf_set[10]));
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
 
-#ifdef NVSTORE_TESTING
-    result = nvstore.force_garbage_collection();
-    TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
-#endif
-
     actual_len_bytes = 0;
     result = nvstore.get(10, 15, nvstore_testing_buf_get, actual_len_bytes);
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
@@ -434,15 +479,11 @@ void nvstore_basic_functionality_test()
     TEST_ASSERT_EQUAL(53, actual_len_bytes);
     TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)&(nvstore_testing_buf_set[10]), (uint8_t*)nvstore_testing_buf_get, 53);
     zero_get_array(53);
-
-    nvstore_int_flash_deinit();
 }
 
 
 void nvstore_chunk_iterations_test()
 {
-    nvstore_int_flash_init();
-
     uint32_t *data_array[MAX_KEYS];
     uint32_t data_size_array[MAX_KEYS] = {0};
     uint16_t actual_len_bytes = 0;
@@ -485,97 +526,9 @@ void nvstore_chunk_iterations_test()
     {
         free(data_array[i]);
     }
-    nvstore_int_flash_deinit();
 }
 
 
-
-void nvstore_garbage_collection_test()
-{
-    nvstore_int_flash_init();
-
-    uint32_t nvstore_curr_size = MASTER_RECORD_SIZE;
-    int result;
-    NVStore &nvstore = NVStore::get_instance();
-
-    result = nvstore.reset();
-    TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
-#ifdef NVSTORE_TESTING
-    result = nvstore.force_garbage_collection();
-    TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
-#endif
-    uint32_t *data_array[MAX_KEYS];
-    uint32_t data_size_array[MAX_KEYS] = {0};
-    uint16_t actual_len_bytes = 0;
-
-    for (uint32_t i = 0; i < MAX_KEYS; i++)
-    {
-        data_array[i] = (uint32_t *) malloc(MAX_DATA_SIZE);
-    }
-
-    while (nvstore_curr_size < (1.5 * NVSTORE_SIZE))
-    {
-        uint32_t data_size = 1 + (rand() % MAX_DATA_SIZE);
-        uint16_t key = rand() % MAX_KEYS;
-        gen_random((uint8_t *)data_array[key], data_size);
-        result = nvstore.set(key, data_size, data_array[key]);
-        TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
-        data_size_array[key] = data_size;
-        result = nvstore.get(key, data_size_array[key], nvstore_testing_buf_get, actual_len_bytes);
-        TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
-        TEST_ASSERT_EQUAL(data_size_array[key], actual_len_bytes);
-        TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)(data_array[key]), (uint8_t*)nvstore_testing_buf_get, data_size_array[key]);
-        nvstore_curr_size += (8 + data_size_array[key]);
-    }
-
-    for (uint16_t i = 0; i < MAX_KEYS; i++)
-    {
-        if (data_size_array[i] != 0)
-        {
-            result = nvstore.get(i, data_size_array[i], nvstore_testing_buf_get, actual_len_bytes);
-            TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
-            TEST_ASSERT_EQUAL(data_size_array[i], actual_len_bytes);
-            TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)(data_array[i]), (uint8_t*)nvstore_testing_buf_get, data_size_array[i]);
-        }
-    }
-
-#ifdef NVSTORE_TESTING
-    result = nvstore.force_garbage_collection();
-    TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
-#endif
-
-    for (uint16_t i = 0; i < MAX_KEYS; i++)
-    {
-        if (data_size_array[i] != 0)
-        {
-            result = nvstore.get(i, data_size_array[i], nvstore_testing_buf_get, actual_len_bytes);
-            TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
-            TEST_ASSERT_EQUAL(data_size_array[i], actual_len_bytes);
-            TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)(data_array[i]), (uint8_t*)nvstore_testing_buf_get, data_size_array[i]);
-        }
-    }
-
-    result = nvstore.init();
-    TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
-
-    for (uint16_t i = 0; i < MAX_KEYS; i++)
-    {
-        if (data_size_array[i] != 0)
-        {
-            result = nvstore.get(i, data_size_array[i], nvstore_testing_buf_get, actual_len_bytes);
-            TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, result);
-            TEST_ASSERT_EQUAL(data_size_array[i], actual_len_bytes);
-            TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t*)(data_array[i]), (uint8_t*)nvstore_testing_buf_get, data_size_array[i]);
-        }
-    }
-
-    for (uint16_t i = 0; i < MAX_KEYS; i++)
-    {
-        free(data_array[i]);
-    }
-
-    nvstore_int_flash_deinit();
-}
 
 static void thread_test_check_key(uint16_t key, int check_probe)
 {
@@ -621,7 +574,7 @@ static void thread_test_check_key(uint16_t key, int check_probe)
     TEST_ASSERT(0);
 }
 
-void thread_test_worker()
+static void thread_test_worker()
 {
     int ret;
     int buf_num, is_set;
@@ -630,7 +583,7 @@ void thread_test_worker()
 
     for (;;) {
         key = rand() % MAX_KEYS;
-        is_set = rand() % 4;
+        is_set = rand() % 10;
 
         if (is_set) {
             buf_num = rand() % THR_TEST_NUM_BUFFS;
@@ -657,19 +610,16 @@ static void run_thread_test(int num_threads)
 
     NVStore &nvstore = NVStore::get_instance();
 
-    nvstore_int_flash_init();
     ret = nvstore.reset();
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, ret);
 
-    max_size = MIN(flash_area_params[0].size, flash_area_params[1].size);
-    max_size = MIN(max_size / MAX_KEYS - 16, max_size);
-    max_size = MIN(max_size, MAX_DATA_SIZE);
+    max_size = MIN(nvstore.size() / MAX_KEYS - 16, MAX_DATA_SIZE);
 
     for (key = 0; key < MAX_KEYS; key++) {
         for (i = 0; i < THR_TEST_NUM_BUFFS; i++) {
             size = 1 + rand() % max_size;
             thr_test_sizes[key][i] = size;
-            thr_test_buffs[key][i] = (uint32_t*) malloc(size);
+            thr_test_buffs[key][i] = new uint32_t[size / sizeof(uint32_t) + 1];
             thr_test_inds[key] = 0;
             gen_random((uint8_t *)thr_test_buffs[key][i], size);
         }
@@ -678,7 +628,7 @@ static void run_thread_test(int num_threads)
     }
 
     for (i = 0; i < num_threads; i++) {
-        threads[i] = new rtos::Thread(osPriorityBelowNormal, TEST_THREAD_STACK_SIZE);
+        threads[i] = new rtos::Thread(osPriorityBelowNormal, THREAD_STACK_SIZE);
         threads[i]->start(callback(thread_test_worker));
     }
 
@@ -693,9 +643,7 @@ static void run_thread_test(int num_threads)
 
     rtos::Thread::wait(1000);
 
-    nvstore_int_flash_deinit();
     nvstore.deinit();
-    nvstore_int_flash_init();
 
     thread_test_check_key(MAX_KEYS-1, 1);
 
@@ -708,22 +656,86 @@ static void run_thread_test(int num_threads)
 
     for (key = 0; key < MAX_KEYS; key++) {
         for (i = 0; i < THR_TEST_NUM_BUFFS; i++) {
-            free(thr_test_buffs[key][i]);
+            delete thr_test_buffs[key][i];
         }
     }
-    nvstore_int_flash_deinit();
 }
 
 
-void nvstore_single_thread_test()
+static void nvstore_single_thread_test()
 {
     run_thread_test(1);
 }
 
-void nvstore_multi_thread_test()
+static void nvstore_multi_thread_test()
 {
     run_thread_test(MAX_NUMBER_OF_THREADS);
 }
+
+#define RACE_NUM_THREADS 4
+#define RACE_KEY 1
+#define RACE_DATA_SIZE 128
+
+static void race_test_worker(void *buf)
+{
+    int ret;
+    NVStore &nvstore = NVStore::get_instance();
+
+    ret = nvstore.set(RACE_KEY, RACE_DATA_SIZE, (uint32_t *) buf);
+    TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, ret);
+}
+
+static void nvstore_race_test()
+{
+    int i;
+    uint16_t initial_buf_size;
+    int ret;
+    rtos::Thread *threads[RACE_NUM_THREADS];
+    uint32_t *get_buff, *buffs[RACE_NUM_THREADS];
+    uint16_t actual_len_bytes;
+
+    NVStore &nvstore = NVStore::get_instance();
+
+    ret = nvstore.reset();
+    TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, ret);
+
+    initial_buf_size = (nvstore.size() - RACE_DATA_SIZE) / 2;
+    uint32_t *initial_buf = new uint32_t[initial_buf_size / sizeof(uint32_t)];
+    for (i = 0; i < 2; i++) {
+        ret = nvstore.set(0, initial_buf_size, initial_buf);
+        TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, ret);
+    }
+    delete initial_buf;
+
+    for (i = 0; i < RACE_NUM_THREADS; i++) {
+        buffs[i] = new uint32_t[RACE_DATA_SIZE / sizeof(uint32_t)];
+        gen_random((uint8_t *)buffs[i], RACE_DATA_SIZE);
+    }
+
+    for (i = 0; i < RACE_NUM_THREADS; i++) {
+        threads[i] = new rtos::Thread((osPriority_t)((int)osPriorityBelowNormal-RACE_NUM_THREADS+i), THREAD_STACK_SIZE);
+        threads[i]->start(callback(race_test_worker, (void*) buffs[i]));
+        threads[i]->join();
+    }
+
+    get_buff = new uint32_t[RACE_DATA_SIZE / sizeof(uint32_t)];
+    ret = nvstore.get(RACE_KEY, RACE_DATA_SIZE, get_buff, actual_len_bytes);
+    TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, ret);
+    TEST_ASSERT_EQUAL(RACE_DATA_SIZE, actual_len_bytes);
+
+    for (i = 0; i < RACE_NUM_THREADS; i++) {
+        if (!memcmp(buffs[i], get_buff, actual_len_bytes))
+            break;
+    }
+    TEST_ASSERT_NOT_EQUAL(RACE_NUM_THREADS, i);
+
+    for (i = 0; i < RACE_NUM_THREADS; i++) {
+        delete threads[i];
+        delete buffs[i];
+    }
+    delete get_buff;
+}
+
 
 
 utest::v1::status_t greentea_failure_handler(const Case *const source, const failure_t reason) {
@@ -733,11 +745,12 @@ utest::v1::status_t greentea_failure_handler(const Case *const source, const fai
 
 Case cases[] = {
         Case("NVStore: Basic flash",          nvstore_basic_flash_test,         greentea_failure_handler),
+        Case("NVStore: Shared Lock test",     nvstore_shared_lock_test,         greentea_failure_handler),
         Case("NVStore: Basic functionality",  nvstore_basic_functionality_test, greentea_failure_handler),
         Case("NVStore: Chunk iterations",     nvstore_chunk_iterations_test,    greentea_failure_handler),
-        Case("NVStore: Garbage collection" ,  nvstore_garbage_collection_test,  greentea_failure_handler),
         Case("NVStore: Single thread test",   nvstore_single_thread_test,       greentea_failure_handler),
         Case("NVStore: Multiple thread test", nvstore_multi_thread_test,        greentea_failure_handler),
+        Case("NVStore: Race test",            nvstore_race_test,                greentea_failure_handler),
 };
 
 utest::v1::status_t greentea_test_setup(const size_t number_of_cases) {
