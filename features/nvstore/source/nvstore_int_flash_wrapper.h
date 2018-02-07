@@ -20,6 +20,7 @@
 #define __NVSTORE_INT_FLASH_WRAPPER_H
 
 #include <stdio.h>
+#include <stdint.h>
 
 /*
  * This is a simple wrapper for the FlashIAP class, supplying basic flash functionality.
