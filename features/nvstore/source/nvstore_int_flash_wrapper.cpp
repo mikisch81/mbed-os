@@ -20,7 +20,9 @@
 
 #include "nvstore_int_flash_wrapper.h"
 #include "nvstore_shared_lock.h"
+#ifdef DEVICE_FLASH
 #include "FlashIAP.h"
+#endif
 #include <stdlib.h>
 
 // --------------------------------------------------------- Definitions ----------------------------------------------------------
@@ -30,15 +32,22 @@
 
 #define MAX_PAGE_SIZE   16
 
+#ifdef DEVICE_FLASH
 static mbed::FlashIAP flash;
+#endif
 
 static size_t get_page_size(void)
 {
+#ifdef DEVICE_FLASH
     return MIN(flash.get_page_size(), MAX_PAGE_SIZE);
+#else
+    return 0;
+#endif
 }
 
 static int program_flash(size_t size, uint32_t address, const uint8_t *buffer)
 {
+#ifdef DEVICE_FLASH
     int ret;
     uint32_t page_size, aligned_size, remainder;
     uint8_t rem_buf[MAX_PAGE_SIZE];
@@ -66,41 +75,51 @@ static int program_flash(size_t size, uint32_t address, const uint8_t *buffer)
     if (ret) {
         return -1;
     }
+#endif
 
     return 0;
 }
 
 size_t nvstore_int_flash_get_sector_size(uint32_t address)
 {
+#ifdef DEVICE_FLASH
     return flash.get_sector_size(address);
+#else
+    return 0;
+#endif
 }
 
 int nvstore_int_flash_init(void)
 {
+#ifdef DEVICE_FLASH
     int ret;
 
     ret = flash.init();
     if (ret) {
         return -1;
     }
+#endif
 
     return 0;
 }
 
 int nvstore_int_flash_deinit(void)
 {
+#ifdef DEVICE_FLASH
     int ret;
 
     ret = flash.deinit();
     if (ret) {
         return -1;
     }
+#endif
 
     return 0;
 }
 
 int nvstore_int_flash_read(size_t size, uint32_t address, uint32_t *buffer)
 {
+#ifdef DEVICE_FLASH
     int ret;
 
     if (!buffer) {
@@ -116,6 +135,7 @@ int nvstore_int_flash_read(size_t size, uint32_t address, uint32_t *buffer)
     if (ret) {
         return -1;
     }
+#endif
 
     return 0;
 }
@@ -123,6 +143,7 @@ int nvstore_int_flash_read(size_t size, uint32_t address, uint32_t *buffer)
 
 int nvstore_int_flash_erase(uint32_t address, size_t size)
 {
+#ifdef DEVICE_FLASH
     int ret;
     size_t sector_size = nvstore_int_flash_get_sector_size(address);
 
@@ -135,6 +156,7 @@ int nvstore_int_flash_erase(uint32_t address, size_t size)
     if (ret) {
         return -1;
     }
+#endif
 
     return 0;
 }
@@ -142,6 +164,7 @@ int nvstore_int_flash_erase(uint32_t address, size_t size)
 
 int nvstore_int_flash_write(size_t size, uint32_t address, const uint32_t *buffer)
 {
+#ifdef DEVICE_FLASH
     int ret;
     uint32_t page_size = get_page_size();
     uint32_t sector_size = nvstore_int_flash_get_sector_size(address);
@@ -163,6 +186,7 @@ int nvstore_int_flash_write(size_t size, uint32_t address, const uint32_t *buffe
         buf += chunk;
         sector_size = nvstore_int_flash_get_sector_size(address);
     }
+#endif
 
     return 0;
 }
