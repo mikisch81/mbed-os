@@ -19,6 +19,7 @@
 
 // These addresses need to be configured according to board (in mbed_lib.json)
 #ifndef DEVICE_FLASH
+#undef NVSTORE_ENABLED
 #define NVSTORE_ENABLED 0
 #endif
 
