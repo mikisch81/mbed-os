@@ -18,10 +18,8 @@
 #define __NVSTORE_H
 
 // These addresses need to be configured according to board (in mbed_lib.json)
-#if defined(NVSTORE_AREA_1_ADDRESS) && defined(NVSTORE_AREA_1_SIZE) && \
-    defined(NVSTORE_AREA_2_ADDRESS) && defined(NVSTORE_AREA_2_SIZE) && \
-    defined(DEVICE_FLASH)
-#define NVSTORE_ENABLED 1
+#ifndef DEVICE_FLASH
+#define NVSTORE_ENABLED 0
 #endif
 
 #if NVSTORE_ENABLED
@@ -48,6 +46,8 @@ enum {
 #ifndef NVSTORE_MAX_KEYS
 #define NVSTORE_MAX_KEYS 16
 #endif
+
+#define NVSTORE_MIN_SIZE 4096
 
 class NVStore : private mbed::NonCopyable<NVStore> {
 public:
@@ -218,6 +218,15 @@ public:
 
 
 /**
+ * @brief Return address and size of an NVStore area.
+ *
+ * @returns NVSTORE_SUCCESS           Success.
+ *          NVSTORE_BAD_VALUE         Bad area parameter.
+ */
+    int get_area_params(uint8_t area, uint32_t &address, size_t &size);
+
+
+/**
  * @brief Returns one item of data programmed on Flash, given key.
  *        This is a self contained version of the get function (not requiring init), traversing the flash each time if triggered.
  *        This function is NOT thread safe. Its implementation is here for the case we want to minimise code size for clients
@@ -242,6 +251,12 @@ public:
     int probe(uint16_t key, uint16_t buf_len_bytes, uint32_t *buf, uint16_t &actual_len_bytes);
 
 private:
+    typedef struct
+    {
+        uint32_t address;
+        size_t   size;
+    } nvstore_area_data_t;
+
     int _init_done;
     uint32_t _init_attempts;
     uint8_t _active_area;
@@ -251,6 +266,7 @@ private:
     uint32_t _size;
     NVstoreSharedLock _lock;
     uint32_t *_offset_by_key;
+    nvstore_area_data_t _flash_area_params[NVSTORE_NUM_AREAS];
 
     // Private constructor, as class is a singleton
     NVStore();
@@ -258,6 +274,8 @@ private:
     int flash_read_area(uint8_t area, uint32_t offset, uint32_t len_bytes, uint32_t *buf);
     int flash_write_area(uint8_t area, uint32_t offset, uint32_t len_bytes, const uint32_t *buf);
     int flash_erase_area(uint8_t area);
+
+    void calc_validate_area_params();
 
     int calc_empty_space(uint8_t area, uint32_t &offset);
 
@@ -285,5 +303,3 @@ private:
 #endif // NVSTORE_ENABLED
 
 #endif
-
-

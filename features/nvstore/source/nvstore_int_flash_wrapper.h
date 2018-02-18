@@ -40,6 +40,20 @@
 size_t nvstore_int_flash_get_sector_size(uint32_t address);
 
 /**
+ * @brief Returns flash start.
+ *
+ * @returns flash start.
+ */
+size_t nvstore_int_flash_get_flash_start();
+
+/**
+ * @brief Returns flash size.
+ *
+ * @returns flash size.
+ */
+size_t nvstore_int_flash_get_flash_size();
+
+/**
  * @brief Initialises flash.
  *
  * @returns 0 on success, return code otherwise.

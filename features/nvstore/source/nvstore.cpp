@@ -76,11 +76,17 @@ typedef struct
     size_t   size;
 } nvstore_area_data_t;
 
-const nvstore_area_data_t flash_area_params[] =
-{
-        {NVSTORE_AREA_1_ADDRESS, NVSTORE_AREA_1_SIZE},
-        {NVSTORE_AREA_2_ADDRESS, NVSTORE_AREA_2_SIZE}
-};
+#if defined(NVSTORE_AREA_1_ADDRESS) || defined(NVSTORE_AREA_1_SIZE) ||\
+    defined(NVSTORE_AREA_2_ADDRESS) || defined(NVSTORE_AREA_2_SIZE)
+#define AREA_PARAMS_USER_CONFIG 1
+#endif
+
+#if AREA_PARAMS_USER_CONFIG
+#if !defined(NVSTORE_AREA_1_ADDRESS) || !defined(NVSTORE_AREA_1_SIZE) ||\
+    !defined(NVSTORE_AREA_2_ADDRESS) || !defined(NVSTORE_AREA_2_SIZE)
+#error Incomplete NVStore area configuration
+#endif
+#endif
 
 typedef enum {
     AREA_STATE_NONE = 0,
@@ -183,7 +189,7 @@ void NVStore::set_max_keys(uint16_t num_keys)
 // Return        : 0 on success. Error code otherwise.
 int NVStore::flash_read_area(uint8_t area, uint32_t offset, uint32_t len_bytes, uint32_t *buf)
 {
-    return nvstore_int_flash_read(len_bytes, flash_area_params[area].address + offset, buf);
+    return nvstore_int_flash_read(len_bytes, _flash_area_params[area].address + offset, buf);
 }
 
 // Write to flash, given area and offset.
@@ -195,7 +201,7 @@ int NVStore::flash_read_area(uint8_t area, uint32_t offset, uint32_t len_bytes, 
 // Return        : 0 on success. Error code otherwise.
 int NVStore::flash_write_area(uint8_t area, uint32_t offset, uint32_t len_bytes, const uint32_t *buf)
 {
-    return nvstore_int_flash_write(len_bytes, flash_area_params[area].address + offset, buf);
+    return nvstore_int_flash_write(len_bytes, _flash_area_params[area].address + offset, buf);
 }
 
 // Erase a flash area, given area.
@@ -204,7 +210,90 @@ int NVStore::flash_write_area(uint8_t area, uint32_t offset, uint32_t len_bytes,
 // Return        : 0 on success. Error code otherwise.
 int NVStore::flash_erase_area(uint8_t area)
 {
-    return nvstore_int_flash_erase(flash_area_params[area].address, flash_area_params[area].size);
+    return nvstore_int_flash_erase(_flash_area_params[area].address, _flash_area_params[area].size);
+}
+
+// Calculate area address and size configuration (in case it's not determined by the user)
+// or validate it (in case it is)
+void NVStore::calc_validate_area_params()
+{
+    int num_sectors = 0;
+
+    size_t flash_addr = nvstore_int_flash_get_flash_start();
+    size_t flash_size = nvstore_int_flash_get_flash_size();
+    size_t sector_size;
+    int max_sectors = flash_size / nvstore_int_flash_get_sector_size(flash_addr) + 1;
+    size_t *sector_map = new size_t[max_sectors];
+
+    int area = 0;
+    size_t left_size = flash_size;
+#if AREA_PARAMS_USER_CONFIG
+    _flash_area_params[0].address = NVSTORE_AREA_1_ADDRESS;
+    _flash_area_params[0].size    = NVSTORE_AREA_1_SIZE;
+    _flash_area_params[1].address = NVSTORE_AREA_2_ADDRESS;
+    _flash_area_params[1].size    = NVSTORE_AREA_2_SIZE;
+
+    int in_area = 0;
+    size_t area_size = 0;
+#endif
+    while (left_size) {
+        sector_size = nvstore_int_flash_get_sector_size(flash_addr);
+        //printf("Sector %3d: Address 0x%08x, size %6ld\n", num_sectors, flash_addr, sector_size);
+        sector_map[num_sectors++] = flash_addr;
+#if AREA_PARAMS_USER_CONFIG
+        // User configuration - here we validate it
+        if (_flash_area_params[area].address == flash_addr) {
+            in_area = 1;
+        }
+        if (in_area) {
+            area_size += sector_size;
+            if (area_size == _flash_area_params[area].size) {
+                area++;
+                if (area == NVSTORE_NUM_AREAS) {
+                    break;
+                }
+                in_area = 0;
+                area_size = 0;
+            }
+        }
+#endif
+        flash_addr += sector_size;
+        left_size -= sector_size;
+    }
+    sector_map[num_sectors] = flash_addr;
+
+#if AREA_PARAMS_USER_CONFIG
+    MBED_ASSERT(area == NVSTORE_NUM_AREAS);
+#else
+    // Not user configuration - calculate area parameters
+    area = 1;
+    _flash_area_params[area].size = 0;
+    int i;
+    for (i = num_sectors-1; i >= 0; i--) {
+        sector_size = sector_map[i+1] - sector_map[i];
+        _flash_area_params[area].size += sector_size;
+        if (_flash_area_params[area].size >= NVSTORE_MIN_SIZE) {
+            _flash_area_params[area].address = sector_map[i];
+            area--;
+            if (area < 0) {
+                break;
+            }
+            _flash_area_params[area].size = 0;
+        }
+    }
+#endif
+
+#if 0
+    printf("Flash: Address 0x%08x, size %d (0x%x)\n", flash_addr, flash_size, flash_size);
+    printf("Current area parameters\n");
+    for (area = 0; area < NVSTORE_NUM_AREAS; area++) {
+        printf("Area %d: Address 0x%08x, size %6ld\n", area,
+                _flash_area_params[area].address, _flash_area_params[area].size);
+    }
+#endif
+
+    delete[] sector_map;
+
 }
 
 
@@ -720,16 +809,15 @@ int NVStore::init()
 
     _size = (uint32_t) -1;
     nvstore_int_flash_init();
+
+    calc_validate_area_params();
+
     for (uint8_t area = 0; area < NVSTORE_NUM_AREAS; area++) {
         area_state[area] = AREA_STATE_NONE;
         free_space_offset_of_area[area] =  0;
         versions[area] = 0;
 
-        size_t sector_size = nvstore_int_flash_get_sector_size(flash_area_params[area].address);
-        MBED_ASSERT(flash_area_params[area].size >= sector_size);
-        MBED_ASSERT((flash_area_params[area].size % sector_size) == 0);
-
-        _size = MIN(_size, flash_area_params[area].size);
+       _size = MIN(_size, _flash_area_params[area].size);
 
         // Find start of empty space at the end of the area. This serves for both
         // knowing whether the area is empty and for the record traversal at the end.
@@ -853,6 +941,22 @@ int NVStore::reset()
 
     deinit();
     return init();
+}
+
+int NVStore::get_area_params(uint8_t area, uint32_t &address, size_t &size)
+{
+    if (area >= NVSTORE_NUM_AREAS) {
+        return NVSTORE_BAD_VALUE;
+    }
+
+    if (!_init_done) {
+        init();
+    }
+
+    address = _flash_area_params[area].address;
+    size = _flash_area_params[area].size;
+
+    return NVSTORE_SUCCESS;
 }
 
 uint32_t NVStore::size()

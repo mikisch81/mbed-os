@@ -25,7 +25,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#ifndef NVSTORE_ENABLED
+#if !NVSTORE_ENABLED
 #error [NOT_SUPPORTED] NVSTORE needs to be enabled for this test
 #endif
 
@@ -78,31 +78,33 @@ typedef struct
     size_t   size;
 } nvstore_area_data_t;
 
-const nvstore_area_data_t flash_area_params[] =
-{
-        {NVSTORE_AREA_1_ADDRESS, NVSTORE_AREA_1_SIZE},
-        {NVSTORE_AREA_2_ADDRESS, NVSTORE_AREA_2_SIZE}
-};
-
-
 void nvstore_basic_flash_test()
 {
 
     uint32_t pattern1[8], pattern2[6], pattern3[4], read_pat[12];
     int res;
-    uint32_t address;
+    uint32_t area_address, address;
+    size_t area_size;
     uint8_t area;
 
-    nvstore_int_flash_init();
+    NVStore &nvstore = NVStore::get_instance();
+    nvstore.reset();
 
     for (area = 0; area < 2; area++) {
-        printf("\nArea %d data, address 0x%lx, size %d\n", area, flash_area_params[area].address, flash_area_params[area].size);
-        address = flash_area_params[area].address;
 
-        res = nvstore_int_flash_erase(flash_area_params[area].address, flash_area_params[area].size);
+        nvstore.get_area_params(area, area_address, area_size);
+        printf("\nArea %d: address 0x%08lx, size %d (0x%x)\n", area, area_address, area_size, area_size);
+        address = area_address;
+
+        res = nvstore_int_flash_erase(area_address, area_size);
         TEST_ASSERT_EQUAL(0, res);
 
         memset(pattern1, 0xFF, sizeof(pattern1));
+
+        res = nvstore_int_flash_read(sizeof(pattern1), address, read_pat);
+        TEST_ASSERT_EQUAL(0, res);
+        TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t *)pattern1, (uint8_t *)read_pat, sizeof(pattern1));
+
         memset(pattern1, 'A', 15);
         res = nvstore_int_flash_write(15, address, pattern1);
         TEST_ASSERT_EQUAL(0, res);
@@ -120,25 +122,22 @@ void nvstore_basic_flash_test()
         TEST_ASSERT_EQUAL(0, res);
         address += sizeof(pattern3);
 
-        address = flash_area_params[area].address;
-
+        address = area_address;
         res = nvstore_int_flash_read(sizeof(pattern1), address, read_pat);
         TEST_ASSERT_EQUAL(0, res);
-        TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t *)read_pat, (uint8_t *)pattern1, sizeof(pattern1));
+        TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t *)pattern1, (uint8_t *)read_pat, sizeof(pattern1));
         address += sizeof(pattern1);
 
         res = nvstore_int_flash_read(sizeof(pattern2), address, read_pat);
         TEST_ASSERT_EQUAL(0, res);
-        TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t *)read_pat, (uint8_t *)pattern2, sizeof(pattern2));
+        TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t *)pattern2, (uint8_t *)read_pat, sizeof(pattern2));
         address += sizeof(pattern2);
 
         res = nvstore_int_flash_read(sizeof(pattern3), address, read_pat);
         TEST_ASSERT_EQUAL(0, res);
-        TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t *)read_pat, (uint8_t *)pattern3, sizeof(pattern3));
+        TEST_ASSERT_EQUAL_UINT8_ARRAY((uint8_t *)pattern3, (uint8_t *)read_pat, sizeof(pattern3));
         address += sizeof(pattern3);
     }
-
-    nvstore_int_flash_deinit();
 }
 
 #define SHLOCK_TEST_NUM_THREADS 6
@@ -661,11 +660,12 @@ static void run_thread_test(int num_threads)
     }
 }
 
-
+#if 0
 static void nvstore_single_thread_test()
 {
     run_thread_test(1);
 }
+#endif
 
 static void nvstore_multi_thread_test()
 {
@@ -748,9 +748,9 @@ Case cases[] = {
         Case("NVStore: Shared Lock test",     nvstore_shared_lock_test,         greentea_failure_handler),
         Case("NVStore: Basic functionality",  nvstore_basic_functionality_test, greentea_failure_handler),
         Case("NVStore: Chunk iterations",     nvstore_chunk_iterations_test,    greentea_failure_handler),
-        Case("NVStore: Single thread test",   nvstore_single_thread_test,       greentea_failure_handler),
-        Case("NVStore: Multiple thread test", nvstore_multi_thread_test,        greentea_failure_handler),
         Case("NVStore: Race test",            nvstore_race_test,                greentea_failure_handler),
+        //Case("NVStore: Single thread test",   nvstore_single_thread_test,       greentea_failure_handler),
+        Case("NVStore: Multiple thread test", nvstore_multi_thread_test,        greentea_failure_handler),
 };
 
 utest::v1::status_t greentea_test_setup(const size_t number_of_cases) {
