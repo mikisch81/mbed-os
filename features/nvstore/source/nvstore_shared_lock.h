@@ -20,7 +20,7 @@
 #define __NVSTORE_SHARED_LOCK_H
 
 #include <stdint.h>
-#include "rtos/Mutex.h"
+#include "PlatformMutex.h"
 
 enum {
     NVSTORE_OS_OK          =  0,
@@ -84,7 +84,7 @@ public:
 
 private:
     uint32_t _ctr;
-    rtos::Mutex  *_mutex;
+    PlatformMutex  *_mutex;
 };
 
 
