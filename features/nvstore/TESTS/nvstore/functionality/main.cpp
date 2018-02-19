@@ -17,7 +17,9 @@
 #include "nvstore.h"
 #include "nvstore_int_flash_wrapper.h"
 #include "nvstore_shared_lock.h"
+#ifdef MBED_CONF_RTOS_PRESENT
 #include "Thread.h"
+#endif
 #include "greentea-client/test_env.h"
 #include "unity/unity.h"
 #include "utest/utest.h"
@@ -161,6 +163,7 @@ static void shared_lock_test_writer()
 
 void nvstore_shared_lock_test()
 {
+#ifdef MBED_CONF_RTOS_PRESENT
     int i;
     rtos::Thread *threads[SHLOCK_TEST_NUM_THREADS];
     uint32_t read_vals[] = {0, 0, 0};
@@ -190,6 +193,7 @@ void nvstore_shared_lock_test()
     for (i = 0; i < SHLOCK_TEST_NUM_THREADS; i++) {
         delete threads[i];
     }
+#endif
 }
 
 void nvstore_basic_functionality_test()
@@ -573,6 +577,7 @@ static void thread_test_check_key(uint16_t key, int check_probe)
     TEST_ASSERT(0);
 }
 
+#ifdef MBED_CONF_RTOS_PRESENT
 static void thread_test_worker()
 {
     int ret;
@@ -595,12 +600,14 @@ static void thread_test_worker()
         else
             thread_test_check_key(key, 0);
 
-        osDelay(1);
+        rtos::Thread::wait(1);
     }
 }
+#endif
 
 static void run_thread_test(int num_threads)
 {
+#ifdef MBED_CONF_RTOS_PRESENT
     int i;
     uint16_t size, max_size;
     uint16_t key;
@@ -658,6 +665,7 @@ static void run_thread_test(int num_threads)
             delete thr_test_buffs[key][i];
         }
     }
+#endif
 }
 
 #if 0
@@ -687,6 +695,7 @@ static void race_test_worker(void *buf)
 
 static void nvstore_race_test()
 {
+#ifdef MBED_CONF_RTOS_PRESENT
     int i;
     uint16_t initial_buf_size;
     int ret;
@@ -734,6 +743,7 @@ static void nvstore_race_test()
         delete buffs[i];
     }
     delete get_buff;
+#endif
 }
 
 

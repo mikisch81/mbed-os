@@ -20,7 +20,9 @@
 
 #include "nvstore_shared_lock.h"
 #include "mbed_critical.h"
+#ifdef MBED_CONF_RTOS_PRESENT
 #include "Thread.h"
+#endif
 #include <stdio.h>
 
 
@@ -50,7 +52,7 @@ int NVstoreSharedLock::reset()
     }
 
     if (!_mutex) {
-        _mutex = new rtos::Mutex;
+        _mutex = new PlatformMutex;
         MBED_ASSERT(_mutex);
     }
 
@@ -83,8 +85,10 @@ int NVstoreSharedLock::exclusive_lock()
 {
     _mutex->lock();
 
+#ifdef MBED_CONF_RTOS_PRESENT
     while(_ctr)
         rtos::Thread::wait(MEDITATE_TIME_MS);
+#endif
 
     return NVSTORE_OS_OK;
 }
@@ -99,9 +103,11 @@ int NVstoreSharedLock::exclusive_unlock()
 int NVstoreSharedLock::promote()
 {
     _mutex->lock();
+#ifdef MBED_CONF_RTOS_PRESENT
     while(_ctr > 1) {
         rtos::Thread::wait(MEDITATE_TIME_MS);
     }
+#endif
 
     if (_ctr != 1) {
         return NVSTORE_OS_RTOS_ERR;

@@ -24,7 +24,9 @@
 #include "nvstore_shared_lock.h"
 #include "mbed_critical.h"
 #include "mbed_assert.h"
+#ifdef MBED_CONF_RTOS_PRESENT
 #include "Thread.h"
+#endif
 #include <algorithm>
 #include <string.h>
 #include <stdio.h>
@@ -638,7 +640,9 @@ retry:
             // this means we are not the first writer (uncommon case). Just wait for GC to complete.
             // then retry the operation
             _lock.shared_unlock();
+#ifdef MBED_CONF_RTOS_PRESENT
             rtos::Thread::wait(MEDITATE_TIME_MS);
+#endif
             // Retry operation
             goto retry;
         }
@@ -700,8 +704,10 @@ int NVStore::init()
     // wait until init is finished.
     init_attempts_val = core_util_atomic_incr_u32(&_init_attempts, 1);
     if (init_attempts_val != 1) {
+#ifdef MBED_CONF_RTOS_PRESENT
         while(!_init_done)
             rtos::Thread::wait(MEDITATE_TIME_MS);
+#endif
         return NVSTORE_SUCCESS;
     }
 
