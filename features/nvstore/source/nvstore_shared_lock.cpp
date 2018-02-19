@@ -20,6 +20,7 @@
 
 #include "nvstore_shared_lock.h"
 #include "mbed_critical.h"
+#include "mbed_assert.h"
 #ifdef MBED_CONF_RTOS_PRESENT
 #include "Thread.h"
 #endif

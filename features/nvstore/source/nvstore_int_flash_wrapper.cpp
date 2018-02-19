@@ -23,6 +23,7 @@
 #include "nvstore_int_flash_wrapper.h"
 #include "nvstore_shared_lock.h"
 #include "FlashIAP.h"
+#include "mbed_assert.h"
 #include <stdlib.h>
 #include <algorithm>
 
