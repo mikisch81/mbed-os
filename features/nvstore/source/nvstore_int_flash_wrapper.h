@@ -26,8 +26,6 @@
  * This is a simple wrapper for the FlashIAP class, supplying basic flash functionality.
  */
 
-#define NVSTORE_NUM_AREAS        2
-
 #define NVSTORE_BLANK_FLASH_VAL 0xFF
 
 /**

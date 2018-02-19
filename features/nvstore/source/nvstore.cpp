@@ -17,24 +17,19 @@
 // ----------------------------------------------------------- Includes -----------------------------------------------------------
 
 #include "nvstore.h"
+
+#if NVSTORE_ENABLED
+
 #include "nvstore_int_flash_wrapper.h"
 #include "nvstore_shared_lock.h"
 #include "mbed_critical.h"
 #include "mbed_assert.h"
 #include "Thread.h"
+#include <algorithm>
 #include <string.h>
 #include <stdio.h>
 
-#if NVSTORE_ENABLED
-
 // --------------------------------------------------------- Definitions ----------------------------------------------------------
-
-#define PR_ERR printf
-#define PR_INFO printf
-#define PR_DEBUG printf
-
-#define MIN(a,b)            ((a) < (b) ? (a) : (b))
-#define MAX(a,b)            ((a) > (b) ? (a) : (b))
 
 #define DELETE_ITEM_FLAG  0x8000
 #define SET_ONCE_FLAG     0x4000
@@ -47,12 +42,12 @@ typedef struct {
     uint16_t key_and_flags;
     uint16_t length;
     uint32_t mac;
-} record_header_t __attribute__((aligned(4)));
+} record_header_t;
 
 
-#define OFFS_BY_KEY_AREA_MASK     0x80000000
-#define OFFS_BY_KEY_SET_ONCE_MASK 0x40000000
-#define OFFS_BY_KEY_FLAG_MASK     0xC0000000
+#define OFFS_BY_KEY_AREA_MASK     0x80000000UL
+#define OFFS_BY_KEY_SET_ONCE_MASK 0x40000000UL
+#define OFFS_BY_KEY_FLAG_MASK     0xC0000000UL
 #define OFFS_BY_KEY_AREA_BIT_POS      31
 #define OFFS_BY_KEY_SET_ONCE_BIT_POS  30
 
@@ -64,11 +59,13 @@ typedef struct {
     uint16_t version;
     uint16_t reserved1;
     uint32_t reserved2;
-} master_record_data_t __attribute__((aligned(4)));
+} master_record_data_t;
 
 #define MASTER_RECORD_SIZE sizeof(master_record_data_t)
 
 #define MEDITATE_TIME_MS 1
+
+#define MIN_AREA_SIZE 4096
 
 typedef struct
 {
@@ -76,11 +73,14 @@ typedef struct
     size_t   size;
 } nvstore_area_data_t;
 
+// See whether any of these defines are given (by config files)
+// If so, this means that that area configuration is given by the user
 #if defined(NVSTORE_AREA_1_ADDRESS) || defined(NVSTORE_AREA_1_SIZE) ||\
     defined(NVSTORE_AREA_2_ADDRESS) || defined(NVSTORE_AREA_2_SIZE)
 #define AREA_PARAMS_USER_CONFIG 1
 #endif
 
+// Require all area configuration parameters if any one of them is present
 #if AREA_PARAMS_USER_CONFIG
 #if !defined(NVSTORE_AREA_1_ADDRESS) || !defined(NVSTORE_AREA_1_SIZE) ||\
     !defined(NVSTORE_AREA_2_ADDRESS) || !defined(NVSTORE_AREA_2_SIZE)
@@ -99,16 +99,6 @@ typedef enum {
 // -------------------------------------------------- Local Functions Declaration ----------------------------------------------------
 
 // -------------------------------------------------- Functions Implementation ----------------------------------------------------
-
-// Safely increment an integer (depending on if we're thread safe or not)
-// Parameters :
-// value         - [IN]   Pointer to variable.
-// size          - [IN]   Increment.
-// Return        : Value after increment.
-int32_t safe_increment(uint32_t &value, uint32_t increment)
-{
-    return core_util_atomic_incr_u32(&value, increment);
-}
 
 // Check whether a buffer is aligned.
 // Parameters :
@@ -178,43 +168,21 @@ void NVStore::set_max_keys(uint16_t num_keys)
     deinit();
 }
 
-// Flash access helper functions, using area and offset notations
-
-// Read from flash, given area and offset.
-// Parameters :
-// area          - [IN]   Flash area.
-// offset        - [IN]   Offset in area.
-// len_bytes     - [IN]   Length in bytes.
-// buf           - [IN]   Data buffer.
-// Return        : 0 on success. Error code otherwise.
 int NVStore::flash_read_area(uint8_t area, uint32_t offset, uint32_t len_bytes, uint32_t *buf)
 {
     return nvstore_int_flash_read(len_bytes, _flash_area_params[area].address + offset, buf);
 }
 
-// Write to flash, given area and offset.
-// Parameters :
-// area          - [IN]   Flash area.
-// offset        - [IN]   Offset in area.
-// len_bytes     - [IN]   Length in bytes.
-// buf           - [IN]   Data buffer.
-// Return        : 0 on success. Error code otherwise.
 int NVStore::flash_write_area(uint8_t area, uint32_t offset, uint32_t len_bytes, const uint32_t *buf)
 {
     return nvstore_int_flash_write(len_bytes, _flash_area_params[area].address + offset, buf);
 }
 
-// Erase a flash area, given area.
-// Parameters :
-// area          - [IN]   Flash area.
-// Return        : 0 on success. Error code otherwise.
 int NVStore::flash_erase_area(uint8_t area)
 {
     return nvstore_int_flash_erase(_flash_area_params[area].address, _flash_area_params[area].size);
 }
 
-// Calculate area address and size configuration (in case it's not determined by the user)
-// or validate it (in case it is)
 void NVStore::calc_validate_area_params()
 {
     int num_sectors = 0;
@@ -238,10 +206,11 @@ void NVStore::calc_validate_area_params()
 #endif
     while (left_size) {
         sector_size = nvstore_int_flash_get_sector_size(flash_addr);
-        //printf("Sector %3d: Address 0x%08x, size %6ld\n", num_sectors, flash_addr, sector_size);
         sector_map[num_sectors++] = flash_addr;
 #if AREA_PARAMS_USER_CONFIG
         // User configuration - here we validate it
+        // Check that address is on a sector boundary, that size covers complete sector sizes,
+        // and that areas don't overlap.
         if (_flash_area_params[area].address == flash_addr) {
             in_area = 1;
         }
@@ -263,16 +232,19 @@ void NVStore::calc_validate_area_params()
     sector_map[num_sectors] = flash_addr;
 
 #if AREA_PARAMS_USER_CONFIG
+    // Valid areas were counted. Assert if not the expected number.
     MBED_ASSERT(area == NVSTORE_NUM_AREAS);
 #else
-    // Not user configuration - calculate area parameters
+    // Not user configuration - calculate area parameters.
+    // Take last two sectors by default. If their sizes aren't big enough, take
+    // a few consecutive ones.
     area = 1;
     _flash_area_params[area].size = 0;
     int i;
     for (i = num_sectors-1; i >= 0; i--) {
         sector_size = sector_map[i+1] - sector_map[i];
         _flash_area_params[area].size += sector_size;
-        if (_flash_area_params[area].size >= NVSTORE_MIN_SIZE) {
+        if (_flash_area_params[area].size >= MIN_AREA_SIZE) {
             _flash_area_params[area].address = sector_map[i];
             area--;
             if (area < 0) {
@@ -283,25 +255,11 @@ void NVStore::calc_validate_area_params()
     }
 #endif
 
-#if 0
-    printf("Flash: Address 0x%08x, size %d (0x%x)\n", flash_addr, flash_size, flash_size);
-    printf("Current area parameters\n");
-    for (area = 0; area < NVSTORE_NUM_AREAS; area++) {
-        printf("Area %d: Address 0x%08x, size %6ld\n", area,
-                _flash_area_params[area].address, _flash_area_params[area].size);
-    }
-#endif
-
     delete[] sector_map;
 
 }
 
 
-// Scan start of latest continuous empty area in flash area.
-// Parameters :
-// area          - [IN]   Flash area.
-// offset        - [OUT]  Blank chunk offset.
-// Return        : 0 on success. Error code otherwise.
 int NVStore::calc_empty_space(uint8_t area, uint32_t &offset)
 {
     uint32_t buf[32];
@@ -326,27 +284,13 @@ int NVStore::calc_empty_space(uint8_t area, uint32_t &offset)
     return 0;
 }
 
-// Read a record from a given area and offset.
-// Parameters :
-// area          - [IN]   Flash area.
-// offset        - [IN]   Record offset.
-// buf_len_bytes - [IN]   Length of user buffer in byte.
-// buf           - [IN]   User buffer.
-// actual_len_bytes
-//               - [Out]  Actual length of returned data.
-// validate_only - [IN]   Just validate (don't return user data).
-// valid         - [Out]  Is record valid.
-// key           - [Out]  Record key.
-// flags         - [Out]  Record flags.
-// next_offset   - [Out]  If valid, offset of next record.
-// Return        : NVSTORE_SUCCESS on success. Error code otherwise.
 int NVStore::read_record(uint8_t area, uint32_t offset, uint16_t buf_len_bytes, uint32_t *buf,
                                 uint16_t &actual_len_bytes, int validate_only, int &valid,
                                 uint16_t &key, uint16_t &flags, uint32_t &next_offset)
 {
     uint32_t int_buf[32];
     uint32_t *buf_ptr;
-    uint32_t data_len, chunk_len;
+    uint16_t data_len, chunk_len;
     int os_ret;
     record_header_t header;
     uint32_t crc = INITIAL_CRC;
@@ -390,7 +334,7 @@ int NVStore::read_record(uint8_t area, uint32_t offset, uint16_t buf_len_bytes, 
     }
 
     while (data_len) {
-        chunk_len = MIN(data_len, buf_len_bytes);
+        chunk_len = std::min(data_len, buf_len_bytes);
         os_ret = flash_read_area(area, offset, chunk_len, buf_ptr);
         if (os_ret) {
             return NVSTORE_READ_ERROR;
@@ -411,16 +355,6 @@ int NVStore::read_record(uint8_t area, uint32_t offset, uint16_t buf_len_bytes, 
     return NVSTORE_SUCCESS;
 }
 
-// Write a record in a given area and offset.
-// Parameters :
-// area          - [IN]   Flash area.
-// offset        - [IN]   Record offset.
-// key           - [IN]   Record key.
-// flags         - [IN]   Record flags
-// data_len      - [IN]   Record's data length.
-// data_buf      - [IN]   Record's data buffer.
-// next_offset   - [Out]  offset of next record.
-// Return        : NVSTORE_SUCCESS on success. Error code otherwise.
 int NVStore::write_record(uint8_t area, uint32_t offset, uint16_t key, uint16_t flags,
                                  uint32_t data_len, const uint32_t *data_buf, uint32_t &next_offset)
 {
@@ -456,12 +390,6 @@ int NVStore::write_record(uint8_t area, uint32_t offset, uint16_t key, uint16_t 
     return NVSTORE_SUCCESS;
 }
 
-// Write a master record in a given area.
-// Parameters :
-// area          - [IN]   Flash area.
-// version       - [IN]   Version.
-// next_offset   - [Out]  offset of next record.
-// Return        : NVSTORE_SUCCESS on success. Error code otherwise.
 int NVStore::write_master_record(uint8_t area, uint16_t version, uint32_t &next_offset)
 {
     master_record_data_t master_rec;
@@ -473,18 +401,11 @@ int NVStore::write_master_record(uint8_t area, uint16_t version, uint32_t &next_
                         (uint32_t*) &master_rec, next_offset);
 }
 
-// Copy a record from a given area and offset to another offset in the other area.
-// Parameters :
-// from_area     - [IN]   Flash area to copy from.
-// from_offset   - [IN]   Record offset in current area.
-// to_offset     - [IN]   Record offset in new area.
-// next_offset   - [Out]  Offset of next record in the new area.
-// Return        : NVSTORE_SUCCESS on success. Error code otherwise.
 int NVStore::copy_record(uint8_t from_area, uint32_t from_offset, uint32_t to_offset,
                                 uint32_t &next_offset)
 {
     uint32_t int_buf[32];
-    uint32_t data_len, chunk_len;
+    uint16_t data_len, chunk_len;
     int os_ret;
     record_header_t header;
 
@@ -517,7 +438,7 @@ int NVStore::copy_record(uint8_t from_area, uint32_t from_offset, uint32_t to_of
     to_offset += sizeof(header);
 
     while (data_len) {
-        chunk_len = MIN(data_len, sizeof(int_buf));
+        chunk_len = std::min(data_len, (uint16_t) sizeof(int_buf));
         os_ret = flash_read_area(from_area, from_offset, chunk_len, int_buf);
         if (os_ret) {
             return NVSTORE_READ_ERROR;
@@ -536,12 +457,6 @@ int NVStore::copy_record(uint8_t from_area, uint32_t from_offset, uint32_t to_of
     return NVSTORE_SUCCESS;
 }
 
-// Perform the garbage collection process.
-// Parameters :
-// key           - [IN]   Item's key.
-// buf_len_bytes - [IN]   Item length in bytes.
-// buf           - [IN]   Pointer to user buffer.
-// Return      : NVSTORE_SUCCESS on success. Error code otherwise.
 int NVStore::garbage_collection(uint16_t key, uint16_t flags, uint16_t buf_len_bytes, const uint32_t *buf)
 {
     uint32_t curr_offset, new_area_offset, next_offset;
@@ -600,14 +515,6 @@ int NVStore::garbage_collection(uint16_t key, uint16_t flags, uint16_t buf_len_b
 }
 
 
-// Get API logics helper function. Serves both Get & Get item size APIs.
-// Parameters :
-// key              - [IN]   Item's key.
-// buf_len_bytes    - [IN]   Item length in bytes.
-// buf              - [IN]   Pointer to user buffer.
-// actual_len_bytes - [OUT]  Actual length of returned data.
-// validate_only    - [IN]   Just validate (don't return user data).
-// Return      : NVSTORE_SUCCESS on success. Error code otherwise.
 int NVStore::do_get(uint16_t key, uint16_t buf_len_bytes, uint32_t *buf, uint16_t &actual_len_bytes,
                            int validate_only)
 {
@@ -658,8 +565,6 @@ int NVStore::do_get(uint16_t key, uint16_t buf_len_bytes, uint32_t *buf, uint16_
     _lock.shared_unlock();
     return ret;
 }
-
-// Start of API functions
 
 int NVStore::get(uint16_t key, uint16_t buf_len_bytes, uint32_t *buf, uint16_t &actual_len_bytes)
 {
@@ -714,7 +619,7 @@ retry:
     // produces an offset on which each writer can work separately, without being interrupted
     // by the other writer. The only mutual resource here is _free_space_offset - which
     // gets the correct value because of this atomic increment.
-    new_free_space = safe_increment(_free_space_offset, record_size);
+    new_free_space = core_util_atomic_incr_u32(&_free_space_offset, record_size);
     record_offset = new_free_space - record_size;
 
     // If we cross the area limit, we need to invoke GC. However, we should consider all the cases
@@ -793,7 +698,7 @@ int NVStore::init()
     // This handles the case that init function is called by more than one thread concurrently.
     // Only the one who gets the value of 1 in _init_attempts_val will proceed, while others will
     // wait until init is finished.
-    init_attempts_val = safe_increment(_init_attempts, 1);
+    init_attempts_val = core_util_atomic_incr_u32(&_init_attempts, 1);
     if (init_attempts_val != 1) {
         while(!_init_done)
             rtos::Thread::wait(MEDITATE_TIME_MS);
@@ -817,7 +722,7 @@ int NVStore::init()
         free_space_offset_of_area[area] =  0;
         versions[area] = 0;
 
-       _size = MIN(_size, _flash_area_params[area].size);
+       _size = std::min(_size, _flash_area_params[area].size);
 
         // Find start of empty space at the end of the area. This serves for both
         // knowing whether the area is empty and for the record traversal at the end.
@@ -959,7 +864,7 @@ int NVStore::get_area_params(uint8_t area, uint32_t &address, size_t &size)
     return NVSTORE_SUCCESS;
 }
 
-uint32_t NVStore::size()
+size_t NVStore::size()
 {
     if (!_init_done) {
         init();

@@ -27,10 +27,9 @@
 #include <stdint.h>
 #include <stdio.h>
 #include "platform/NonCopyable.h"
-#include "nvstore_int_flash_wrapper.h"
 #include "nvstore_shared_lock.h"
 
-enum {
+typedef enum {
     NVSTORE_SUCCESS                =  0,
     NVSTORE_READ_ERROR             = -1,
     NVSTORE_WRITE_ERROR            = -2,
@@ -42,13 +41,14 @@ enum {
     NVSTORE_OS_ERROR               = -8,
     NVSTORE_BUFF_NOT_ALIGNED       = -9,
     NVSTORE_ALREADY_EXISTS         = -10,
-};
+} nvstore_status_e;
 
 #ifndef NVSTORE_MAX_KEYS
 #define NVSTORE_MAX_KEYS 16
 #endif
 
-#define NVSTORE_MIN_SIZE 4096
+// defines 2 areas - active and non-active, not configurable
+#define NVSTORE_NUM_AREAS        2
 
 class NVStore : private mbed::NonCopyable<NVStore> {
 public:
@@ -215,11 +215,17 @@ public:
  *
  * @returns NVStore size.
  */
-    uint32_t size();
+    size_t size();
 
 
 /**
  * @brief Return address and size of an NVStore area.
+ *
+ * @param[in]  area                   Area.
+ *
+ * @param[out] address                Area address.
+ *
+ * @param[out] size                   Area size (bytes).
  *
  * @returns NVSTORE_SUCCESS           Success.
  *          NVSTORE_BAD_VALUE         Bad area parameter.
@@ -264,7 +270,7 @@ private:
     uint16_t _max_keys;
     uint16_t _active_area_version;
     uint32_t _free_space_offset;
-    uint32_t _size;
+    size_t _size;
     NVstoreSharedLock _lock;
     uint32_t *_offset_by_key;
     nvstore_area_data_t _flash_area_params[NVSTORE_NUM_AREAS];
@@ -272,31 +278,191 @@ private:
     // Private constructor, as class is a singleton
     NVStore();
 
+/**
+ * @brief Read a block from an area.
+ *
+ * @param[in]  area                   Area.
+ *
+ * @param[in]  offset                 Offset in area.
+ *
+ * @param[in]  len_bytes              Number of bytes to read.
+ *
+ * @param[in]  buf                    Output buffer.
+ *
+ * @returns 0 for success, non-zero for failure.
+ */
     int flash_read_area(uint8_t area, uint32_t offset, uint32_t len_bytes, uint32_t *buf);
+
+/**
+ * @brief Write a block to an area.
+ *
+ * @param[in]  area                   Area.
+ *
+ * @param[in]  offset                 Offset in area.
+ *
+ * @param[in]  len_bytes              Number of bytes to write.
+ *
+ * @param[in]  buf                    Input buffer.
+ *
+ * @returns 0 for success, non-zero for failure.
+ */
     int flash_write_area(uint8_t area, uint32_t offset, uint32_t len_bytes, const uint32_t *buf);
+
+/**
+ * @brief Erase an area.
+ *
+ * @param[in]  area                   Area.
+ *
+ * @returns 0 for success, non-zero for failure.
+ */
     int flash_erase_area(uint8_t area);
 
+/**
+ * @brief Calculate addresses and sizes of areas (in case no user configuration is given),
+ *        or validate user configuration (if given).
+ *
+ * @param[in]  area                   Area.
+ */
     void calc_validate_area_params();
 
+/**
+ * @brief Calculate empty (unprogrammed) continuous space at the end of the area.
+ *
+ * @param[in]  area                   Area.
+ *
+ * @param[out] offset                 Offset of empty space.
+ *
+ * @returns 0 for success, non-zero for failure.
+ */
     int calc_empty_space(uint8_t area, uint32_t &offset);
 
+/**
+ * @brief Read an NVStore record from a given location.
+ *
+ * @param[in]  area                   Area.
+ *
+ * @param[in]  offset                 Offset of record in area.
+ *
+ * @param[in]  buf_len_bytes          Buffer length (bytes).
+ *
+ * @param[in]  buf                    Output Buffer.
+ *
+ * @param[out] actual_len_bytes       Actual data length (bytes).
+ *
+ * @param[in]  validate_only          Just validate (without reading to buffer).
+ *
+ * @param[out] validate               Is the record valid.
+ *
+ * @param[out] key                    Record key.
+ *
+ * @param[out] flags                  Record flags.
+ *
+ * @param[out] next_offset            Offset of next record.
+ *
+ * @returns 0 for success, non-zero for failure.
+ */
     int read_record(uint8_t area, uint32_t offset, uint16_t buf_len_bytes, uint32_t *buf,
                               uint16_t &actual_len_bytes, int validate_only, int &valid,
                               uint16_t &key, uint16_t &flags, uint32_t &next_offset);
 
+/**
+ * @brief Write an NVStore record from a given location.
+ *
+ * @param[in]  area                   Area.
+ *
+ * @param[in]  offset                 Offset of record in area.
+ *
+ * @param[in]  key                    Record key.
+ *
+ * @param[in]  flags                  Record flags.
+ *
+ * @param[in]  data_len               Data length (bytes).
+ *
+ * @param[in]  data_buf               Data buffer.
+ *
+ * @param[out] next_offset            Offset of next record.
+ *
+ * @returns 0 for success, non-zero for failure.
+ */
     int write_record(uint8_t area, uint32_t offset, uint16_t key, uint16_t flags,
                                uint32_t data_len, const uint32_t *data_buf, uint32_t &next_offset);
 
+/**
+ * @brief Write a master record of a given area.
+ *
+ * @param[in]  area                   Area.
+ *
+ * @param[in]  version                Area version.
+ *
+ * @param[out] next_offset            Offset of next record.
+ *
+ * @returns 0 for success, non-zero for failure.
+ */
     int write_master_record(uint8_t area, uint16_t version, uint32_t &next_offset);
 
+/**
+ * @brief Copy a record from one area to the other one.
+ *
+ * @param[in]  from_area              Area to copy record from.
+ *
+ * @param[in]  from_offset            Offset in source area.
+ *
+ * @param[in]  to_offset              Offset in destination area.
+ *
+ * @param[out] next_offset            Offset of next record.
+ *
+ * @returns 0 for success, non-zero for failure.
+ */
     int copy_record(uint8_t from_area, uint32_t from_offset, uint32_t to_offset,
                               uint32_t &next_offset);
 
+/**
+ * @brief Garbage collection (compact all records frm active area to non active ones).
+ *        All parameters belong to a record that needs to be written before the process.
+ *
+ * @param[in]  key                    Record key.
+ *
+ * @param[in]  flags                  Record flags.
+ *
+ * @param[in]  buf_len_bytes          Data length (bytes).
+ *
+ * @param[in]  buf                    Data buffer.
+ *
+ * @returns 0 for success, non-zero for failure.
+ */
     int garbage_collection(uint16_t key, uint16_t flags, uint16_t buf_len_bytes, const uint32_t *buf);
 
+/**
+ * @brief Actual logics of get API (covers also get size API).
+ *
+ * @param[in]  key                    key.
+ *
+ * @param[in]  buf_len_bytes          Buffer length (bytes).
+ *
+ * @param[in]  buf                    Output Buffer.
+ *
+ * @param[out] actual_len_bytes       Actual data length (bytes).
+ *
+ * @param[in]  validate_only          Just validate (without reading to buffer).
+ *
+ * @returns 0 for success, non-zero for failure.
+ */
     int do_get(uint16_t key, uint16_t buf_len_bytes, uint32_t *buf, uint16_t &actual_len_bytes,
                          int validate_only);
 
+/**
+ * @brief Actual logics of set API (covers also set_once and remove APIs).
+ *
+ * @param[in]  key                    key.
+ *
+ * @param[in]  buf_len_bytes          Buffer length (bytes).
+ *
+ * @param[in]  buf                    Input Buffer.
+ *
+ * @param[in]  flags                  Record flags.
+ *
+ * @returns 0 for success, non-zero for failure.
+ */
     int do_set(uint16_t key, uint16_t buf_len_bytes, const uint32_t *buf, uint16_t flags);
 
 };

@@ -24,15 +24,13 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <algorithm>
 
 #if !NVSTORE_ENABLED
 #error [NOT_SUPPORTED] NVSTORE needs to be enabled for this test
 #endif
 
 using namespace utest::v1;
-
-#undef MIN
-#define MIN(a,b)            ((a) < (b) ? (a) : (b))
 
 #define MAX_KEYS 20
 
@@ -88,7 +86,9 @@ void nvstore_basic_flash_test()
     uint8_t area;
 
     NVStore &nvstore = NVStore::get_instance();
-    nvstore.reset();
+
+    res = nvstore.reset();
+    TEST_ASSERT_EQUAL(0, res);
 
     for (area = 0; area < 2; area++) {
 
@@ -612,7 +612,7 @@ static void run_thread_test(int num_threads)
     ret = nvstore.reset();
     TEST_ASSERT_EQUAL(NVSTORE_SUCCESS, ret);
 
-    max_size = MIN(nvstore.size() / MAX_KEYS - 16, MAX_DATA_SIZE);
+    max_size = std::min(nvstore.size() / MAX_KEYS - 16, (size_t) MAX_DATA_SIZE);
 
     for (key = 0; key < MAX_KEYS; key++) {
         for (i = 0; i < THR_TEST_NUM_BUFFS; i++) {

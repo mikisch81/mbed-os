@@ -24,19 +24,17 @@
 #include "nvstore_shared_lock.h"
 #include "FlashIAP.h"
 #include <stdlib.h>
+#include <algorithm>
 
 // --------------------------------------------------------- Definitions ----------------------------------------------------------
 
-#define MIN(a,b)            ((a) < (b) ? (a) : (b))
-#define MAX(a,b)            ((a) > (b) ? (a) : (b))
-
 #define MAX_PAGE_SIZE   16
 
-static mbed::FlashIAP flash;
+static mbed::FlashIAP *flash = 0;
 
 static size_t get_page_size(void)
 {
-    return MIN(flash.get_page_size(), MAX_PAGE_SIZE);
+    return std::min(flash->get_page_size(), (uint32_t) MAX_PAGE_SIZE);
 }
 
 static int program_flash(size_t size, uint32_t address, const uint8_t *buffer)
@@ -49,7 +47,7 @@ static int program_flash(size_t size, uint32_t address, const uint8_t *buffer)
     remainder = size % page_size;
     aligned_size = size - remainder;
     if (aligned_size) {
-        ret = flash.program(buffer, address, aligned_size);
+        ret = flash->program(buffer, address, aligned_size);
 
         if (ret) {
             return -1;
@@ -64,7 +62,7 @@ static int program_flash(size_t size, uint32_t address, const uint8_t *buffer)
 
     memset(rem_buf, NVSTORE_BLANK_FLASH_VAL, page_size);
     memcpy(rem_buf, buffer, remainder);
-    ret = flash.program(buffer, address, page_size);
+    ret = flash->program(buffer, address, page_size);
     if (ret) {
         return -1;
     }
@@ -74,24 +72,31 @@ static int program_flash(size_t size, uint32_t address, const uint8_t *buffer)
 
 size_t nvstore_int_flash_get_sector_size(uint32_t address)
 {
-    return flash.get_sector_size(address);
+    return flash->get_sector_size(address);
 }
 
 size_t nvstore_int_flash_get_flash_start()
 {
-    return flash.get_flash_start();
+    return flash->get_flash_start();
 }
 
 size_t nvstore_int_flash_get_flash_size()
 {
-    return flash.get_flash_size();
+    return flash->get_flash_size();
 }
 
 int nvstore_int_flash_init(void)
 {
     int ret;
 
-    ret = flash.init();
+    if (flash) {
+        return 0;
+    }
+
+    flash = new mbed::FlashIAP;
+    MBED_ASSERT(flash);
+
+    ret = flash->init();
     if (ret) {
         return -1;
     }
@@ -103,11 +108,17 @@ int nvstore_int_flash_deinit(void)
 {
     int ret;
 
-    ret = flash.deinit();
+    if (!flash) {
+        return 0;
+    }
+
+    ret = flash->deinit();
     if (ret) {
         return -1;
     }
 
+    delete flash;
+    flash = 0;
 
     return 0;
 }
@@ -124,7 +135,7 @@ int nvstore_int_flash_read(size_t size, uint32_t address, uint32_t *buffer)
     {
         return -1;
     }
-    ret = flash.read(buffer, address, size);
+    ret = flash->read(buffer, address, size);
 
     if (ret) {
         return -1;
@@ -144,7 +155,7 @@ int nvstore_int_flash_erase(uint32_t address, size_t size)
     }
 
     // No need to iterate over sectors - Flash driver's erase API does it for us
-    ret = flash.erase(address, sector_size);
+    ret = flash->erase(address, size);
     if (ret) {
         return -1;
     }
@@ -166,7 +177,7 @@ int nvstore_int_flash_write(size_t size, uint32_t address, const uint32_t *buffe
     }
 
     while (size) {
-        chunk = MIN(sector_size - (address % sector_size), size);
+        chunk = std::min(sector_size - (address % sector_size), (uint32_t) size);
         ret = program_flash(chunk, address, buf);
         if (ret) {
             return -1;
